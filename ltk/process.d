@@ -7,12 +7,15 @@ import core.sys.posix.stdio;
 import core.sys.posix.unistd;
 import core.sys.posix.sys.wait;
 
+import std.algorithm;
 import std.array;
 import std.contracts;
 import std.conv;
-import std.file;
+import std.path;
 import std.stdio;
 import std.string;
+
+import ltk.file;
 
 
 
@@ -143,6 +146,13 @@ enum ProcessOptions
 
     /// ditto
     redirectStderr = 4,
+
+
+    /** If the executable filename does not contain a path separator
+        character (/ on POSIX, \ on Windows), search for it in the
+        paths specified in the PATH environment variable.
+    */
+    searchPath = 8,
 }
 
 
@@ -211,10 +221,19 @@ Pid spawnProcess(string executable, string[] args = null,
     bool redirectStdin  = (options & ProcessOptions.redirectStdin)  > 0;
     bool redirectStdout = (options & ProcessOptions.redirectStdout) > 0;
     bool redirectStderr = (options & ProcessOptions.redirectStderr) > 0;
+    bool searchPath     = (options & ProcessOptions.searchPath)     > 0;
 
-    // We should really check whether the file is executable here, but
-    // this will do for now.
-    enforce(exists(executable), "Executable file not found: "~executable);
+    // Make sure the file exists and is executable.
+    if (searchPath && (executable.indexOf(sep) == -1))
+    {
+        executable = searchPathFor(executable);
+        enforce(executable != null, "Executable file not found: "~executable);
+    }
+    else
+    {
+        enforce(executable != null  &&  isExecutable(executable),
+            "Executable file not found: "~executable);
+    }
 
     // Set up pipes.
     int[2] stdinFDs;
@@ -304,8 +323,8 @@ private const(char)** toArgz(string path, const string[] args)
 
 
 
-/** Convenience function for spawning a new process, waiting
-    for it to finish, and returning its exit code.
+/** Convenience function that spawns a new process, waits
+    for it to finish, and returns its exit code.
 */
 int execute(string executable, string[] args = null)
 {
@@ -349,4 +368,23 @@ private string getShell()
     if (shellPathz == null)
         return "/bin/sh";
     return to!string(shellPathz);
+}
+
+
+
+version(Windows)  enum char pathListSeparator = ';';
+else              enum char pathListSeparator = ':';
+
+private string searchPathFor(string executable)
+{
+    auto pathz = getenv("PATH");
+    if (pathz == null)  return null;
+
+    foreach (dir; splitter(to!string(pathz), pathListSeparator))
+    {
+        auto execPath = join(dir, executable);
+        if (isExecutable(execPath))  return execPath;
+    }
+
+    return null;
 }
