@@ -1,4 +1,0 @@
-MODULES = 
-	$(MODULE ltk.array)
-	$(MODULE ltk.filelock)
-	$(MODULE ltk.util)
