@@ -10,6 +10,7 @@ import core.sys.posix.sys.wait;
 import std.array;
 import std.contracts;
 import std.conv;
+import std.file;
 import std.stdio;
 import std.string;
 
@@ -186,7 +187,8 @@ enum ProcessOptions
     
     In general it is a good idea
     to wait for all child processes to finish so they don't
-    become 'zombies'. Consider the following example:
+    become 'zombies'. As an example, here's a program that
+    executes two programs in parallel:
     ---
     import ltk.process;
 
@@ -209,6 +211,10 @@ Pid spawnProcess(string executable, string[] args = null,
     bool redirectStdin  = (options & ProcessOptions.redirectStdin)  > 0;
     bool redirectStdout = (options & ProcessOptions.redirectStdout) > 0;
     bool redirectStderr = (options & ProcessOptions.redirectStderr) > 0;
+
+    // We should really check whether the file is executable here, but
+    // this will do for now.
+    enforce(exists(executable), "Executable file not found: "~executable);
 
     // Set up pipes.
     int[2] stdinFDs;
