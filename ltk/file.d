@@ -1,3 +1,8 @@
+/**
+    Authors:    Lars Tandle Kyllingstad
+    Copyright:  Copyright (c) 2010, Lars T. Kyllingstad. All rights reserved.
+    License:    Boost License 1.0
+*/
 module ltk.file;
 
 

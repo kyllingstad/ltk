@@ -1,4 +1,10 @@
-/** Array-related stuff. */
+/** Array-related stuff. These functions are implemented in a quite
+    naïve way, so there is most likely ample room for optimisations.
+
+    Authors:    Lars Tandle Kyllingstad
+    Copyright:  Copyright (c) 2010, Lars T. Kyllingstad. All rights reserved.
+    License:    Boost License 1.0
+*/
 module ltk.array;
 
 
@@ -8,7 +14,8 @@ module ltk.array;
 */
 T getElement(T, U)(T[U] array, U key, T dflt=T.init)
 {
-    if (key in array)  return array[key];
+    T* keyptr = key in array;
+    if (keyptr != null)  return *keyptr;
     else  return dflt;
 }
 
