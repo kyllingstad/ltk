@@ -2,7 +2,9 @@
 module ltk.process;
 
 
+import core.stdc.errno;
 import core.stdc.stdlib;
+import core.stdc.string;
 import core.sys.posix.stdio;
 import core.sys.posix.unistd;
 import core.sys.posix.sys.wait;
@@ -224,7 +226,7 @@ Pid spawnProcess(string executable, string[] args = null,
     bool searchPath     = (options & ProcessOptions.searchPath)     > 0;
 
     // Make sure the file exists and is executable.
-    if (searchPath && (executable.indexOf(sep) == -1))
+    if (searchPath && (executable.indexOf(std.path.sep) == -1))
     {
         executable = searchPathFor(executable);
         enforce(executable != null, "Executable file not found: "~executable);
@@ -277,8 +279,8 @@ Pid spawnProcess(string executable, string[] args = null,
 
         // Execute program
         execv(toStringz(executable), toArgz(executable, args));
-        _exit(127); // Use same error code as popen() on failure.
-        assert (0);
+        throw new Error("Failed to execute program ("~
+            to!string(strerror(errno))~")");
     }
     else
     {
