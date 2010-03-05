@@ -50,11 +50,10 @@ private:
     // Process ID
     int _pid = -1;
 
-    // The file descriptors of the process' standard input,
-    // output and error streams, respectively.
-    int _stdinFD = -1;
-    int _stdoutFD = -1;
-    int _stderrFD = -1;
+    // The process' standard input, output and error streams, respectively.
+    File _stdin;
+    File _stdout;
+    File _stderr;
 
 
 public:
@@ -74,25 +73,19 @@ public:
     */
     @property File stdin()
     {
-        auto f = fdopen(_stdinFD, "w");
-        errnoEnforce(f != null, "Unable to open stdin pipe");
-        return File.wrapFile(f);
+        return _stdin;
     }
 
     /// ditto
     @property File stdout()
     {
-        auto f = fdopen(_stdoutFD, "r");
-        errnoEnforce(f != null, "Unable to open stdout pipe");
-        return File.wrapFile(f);
+        return _stdout;
     }
 
     /// ditto
     @property File stderr()
     {
-        auto f = fdopen(_stderrFD, "r");
-        errnoEnforce(f != null, "Unable to open stderr pipe");
-        return File.wrapFile(f);
+        return _stderr;
     }
 
 
@@ -263,24 +256,23 @@ Pid spawnProcess(string name, string[] args = null,
     {
         // Child process
 
-        // Close the pipe ends we don't need, redirect streams,
-        // and close the old file descriptors.
+        // Redirect streams and close the old file descriptors.
         if (redirectStdin)
         {
-            close(stdinFDs[1]);
             dup2(stdinFDs[0], STDIN_FILENO);
             close(stdinFDs[0]);
+            close(stdinFDs[1]);
         }
         if (redirectStdout)
         {
-            close(stdoutFDs[0]);
             dup2(stdoutFDs[1], STDOUT_FILENO);
+            close(stdoutFDs[0]);
             close(stdoutFDs[1]);
         }
         if (redirectStderr)
         {
-            close(stderrFDs[0]);
             dup2(stderrFDs[1], STDERR_FILENO);
+            close(stderrFDs[0]);
             close(stderrFDs[1]);
         }
 
@@ -298,17 +290,23 @@ Pid spawnProcess(string name, string[] args = null,
         if (redirectStdin)
         {
             close(stdinFDs[0]);
-            pid._stdinFD  = stdinFDs[1];
+            auto f = fdopen(stdinFDs[1], "w");
+            errnoEnforce(f != null, "Unable to open stdin pipe");
+            pid._stdin = File.wrapFile(f);
         }
         if (redirectStdout)
         {
             close(stdoutFDs[1]);
-            pid._stdoutFD = stdoutFDs[0];
+            auto f = fdopen(stdoutFDs[0], "r");
+            errnoEnforce(f != null, "Unable to open stdout pipe");
+            pid._stdout = File.wrapFile(f);
         }
         if (redirectStderr)
         {
             close(stderrFDs[1]);
-            pid._stderrFD = stderrFDs[0];
+            auto f = fdopen(stderrFDs[0], "r");
+            errnoEnforce(f != null, "Unable to open stderr pipe");
+            pid._stderr = File.wrapFile(f);
         }
 
         return pid;
