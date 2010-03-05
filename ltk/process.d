@@ -35,8 +35,8 @@ version(Posix)
     // Until this is fixed, we declare posix.unistd.pipe() here:
     extern(C) int pipe(int[2]*);
 
-    // This is supposed to be defined in unistd.h, though the
-    // POSIX spec doesn't mention it:
+    // Some sources say this is supposed to be defined in unistd.h,
+    // but the POSIX spec doesn't mention it:
     extern(C) extern __gshared const char** environ;
 }
 
@@ -218,7 +218,8 @@ enum ProcessOptions
     }
     ---
 */
-Pid spawnProcess(string name, string[] args = null,
+Pid spawnProcess(string name, const string[] args = null,
+    const string[string] env = null,
     ProcessOptions options = ProcessOptions.none)
 {
     bool redirectStdin  = (options & ProcessOptions.redirectStdin)  > 0;
@@ -236,6 +237,10 @@ Pid spawnProcess(string name, string[] args = null,
         enforce(name != null  &&  isExecutable(name),
             "Executable file not found: "~name);
     }
+
+    // If the environment isn't specified, use the parent process'
+    // environment.  If it is, convert to C-style array.
+    const char** envz = (env == null ? environ : toEnvz(env));
 
     // Set up pipes.
     int[2] stdinFDs;
@@ -277,7 +282,7 @@ Pid spawnProcess(string name, string[] args = null,
         }
 
         // Execute program
-        execv(toStringz(name), toArgz(name, args));
+        execve(toStringz(name), toArgz(name, args), envz);
         throw new Error("Failed to execute program ("~
             to!string(strerror(errno))~")");
     }
@@ -320,13 +325,28 @@ private const(char)** toArgz(string path, const string[] args)
     auto argz = new stringz_t[](args.length+2);
     
     argz[0] = toStringz(path);
-    foreach(i; 0 .. args.length)
+    foreach (i; 0 .. args.length)
     {
         argz[i+1] = toStringz(args[i]);
     }
     argz[$-1] = null;
     return argz.ptr;
 }
+
+private const(char)** toEnvz(const string[string] env)
+{
+    alias const(char)* stringz_t;
+    auto envz = new stringz_t[](env.length+1);
+    int i = 0;
+    foreach (k, v; env)
+    {
+        envz[i] = (k~'='~v~'\0').ptr;
+        i++;
+    }
+    envz[$-1] = null;
+    return envz.ptr;
+}
+
 
 
 
@@ -359,7 +379,7 @@ int shell(string cmd)
 int shell(string cmd, out string output)
 {
     string[2] args = ["-c", cmd];
-    auto pid = spawnProcess(getShell, ["-c", cmd],
+    auto pid = spawnProcess(getShell, ["-c", cmd], null,
         ProcessOptions.redirectStdout);
     
     Appender!string a;

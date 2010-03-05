@@ -13,8 +13,8 @@ import std.conv;
 import std.string;
 
 
-// This is supposed to be defined in unistd.h, though the
-// POSIX spec doesn't mention it:
+// Some sources say this is supposed to be defined in unistd.h,
+// but the POSIX spec doesn't mention it:
 version(Posix)
 {
     extern(C) extern __gshared const char** environ;
