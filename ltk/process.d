@@ -7,12 +7,15 @@
 module ltk.process;
 
 
-import core.stdc.errno;
-import core.stdc.stdlib;
-import core.stdc.string;
-import core.sys.posix.stdio;
-import core.sys.posix.unistd;
-import core.sys.posix.sys.wait;
+version(Posix)
+{
+    import core.stdc.errno;
+    import core.stdc.stdlib;
+    import core.stdc.string;
+    import core.sys.posix.stdio;
+    import core.sys.posix.unistd;
+    import core.sys.posix.sys.wait;
+}
 
 import std.algorithm;
 import std.array;
@@ -26,9 +29,16 @@ import ltk.file;
 
 
 
-// DMD BUG 3604
-// Until this is fixed, we declare posix.unistd.pipe() here:
-extern(C) int pipe(int[2]*);
+version(Posix)
+{
+    // DMD BUG 3604
+    // Until this is fixed, we declare posix.unistd.pipe() here:
+    extern(C) int pipe(int[2]*);
+
+    // This is supposed to be defined in unistd.h, though the
+    // POSIX spec doesn't mention it:
+    extern(C) extern __gshared const char** environ;
+}
 
 
 
@@ -153,13 +163,6 @@ enum ProcessOptions
 
     /// ditto
     redirectStderr = 4,
-
-
-    /** If the executable filename does not contain a path separator
-        character (/ on POSIX, \ on Windows), search for it in the
-        paths specified in the PATH environment variable.
-    */
-    searchPath = 8,
 }
 
 
@@ -222,24 +225,23 @@ enum ProcessOptions
     }
     ---
 */
-Pid spawnProcess(string executable, string[] args = null,
+Pid spawnProcess(string name, string[] args = null,
     ProcessOptions options = ProcessOptions.none)
 {
     bool redirectStdin  = (options & ProcessOptions.redirectStdin)  > 0;
     bool redirectStdout = (options & ProcessOptions.redirectStdout) > 0;
     bool redirectStderr = (options & ProcessOptions.redirectStderr) > 0;
-    bool searchPath     = (options & ProcessOptions.searchPath)     > 0;
 
     // Make sure the file exists and is executable.
-    if (searchPath && (executable.indexOf(std.path.sep) == -1))
+    if (name.indexOf(std.path.sep) == -1)
     {
-        executable = searchPathFor(executable);
-        enforce(executable != null, "Executable file not found: "~executable);
+        name = searchPathFor(name);
+        enforce(name != null, "Executable file not found: "~name);
     }
     else
     {
-        enforce(executable != null  &&  isExecutable(executable),
-            "Executable file not found: "~executable);
+        enforce(name != null  &&  isExecutable(name),
+            "Executable file not found: "~name);
     }
 
     // Set up pipes.
@@ -283,7 +285,7 @@ Pid spawnProcess(string executable, string[] args = null,
         }
 
         // Execute program
-        execv(toStringz(executable), toArgz(executable, args));
+        execv(toStringz(name), toArgz(name, args));
         throw new Error("Failed to execute program ("~
             to!string(strerror(errno))~")");
     }
@@ -379,19 +381,22 @@ private string getShell()
 
 
 
-version(Windows)  enum char pathListSeparator = ';';
-else              enum char pathListSeparator = ':';
-
-private string searchPathFor(string executable)
+// Windows searches the path by default.
+version(Posix)
 {
-    auto pathz = getenv("PATH");
-    if (pathz == null)  return null;
+    enum char pathListSeparator = ':';
 
-    foreach (dir; splitter(to!string(pathz), pathListSeparator))
+    private string searchPathFor(string executable)
     {
-        auto execPath = join(dir, executable);
-        if (isExecutable(execPath))  return execPath;
-    }
+        auto pathz = getenv("PATH");
+        if (pathz == null)  return null;
 
-    return null;
+        foreach (dir; splitter(to!string(pathz), pathListSeparator))
+        {
+            auto execPath = join(dir, executable);
+            if (isExecutable(execPath))  return execPath;
+        }
+
+        return null;
+    }
 }

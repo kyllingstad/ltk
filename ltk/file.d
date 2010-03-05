@@ -6,15 +6,18 @@
 module ltk.file;
 
 
-import core.sys.posix.unistd;
-import std.string;
+version(Posix)
+{
+    import core.sys.posix.unistd;
+    import std.string;
+}
 
 
 
 /** Check whether the file exists and can be executed by the
     current user.
 */
-bool isExecutable(string path)
+version(Posix) bool isExecutable(string path)
 {
     return (access(toStringz(path), X_OK) == 0);
 }
