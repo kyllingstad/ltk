@@ -93,7 +93,11 @@ void main()
     assert (pid.stderr.readln().chomp() == "hello error");
     pid.wait();
 
-
+    
+    // Clean up;
+    std.file.remove("deleteme");
+    std.file.remove("deleteme.d");  
+    std.file.remove("deleteme.o");
 }
 
 
