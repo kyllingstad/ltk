@@ -26,6 +26,8 @@ version(Posix)
 /** Return the value of the environment variable with the given name. */
 string getEnv(string name)
 {
+    // TODO: Stop using the C stdlib getenv() function here?
+    // Writing a native D version is trivial.
     return to!string(getenv(toStringz(name)));
 }
 
