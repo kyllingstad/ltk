@@ -156,6 +156,18 @@ enum ProcessOptions
 
     /// ditto
     redirectStderr = 4,
+
+    /** Redirect the spawned process' standard error stream into
+        its output stream. This cannot be combined with the
+        redirectStderr option.
+    */
+    redirectStderrToStdout = 8,
+
+    /** Redirect the spawned process' standard output stream into
+        its error stream. This cannot be combined with the
+        redirectStdout option.
+    */
+    redirectStdoutToStderr = 16,
 }
 
 
@@ -218,13 +230,37 @@ enum ProcessOptions
     }
     ---
 */
-Pid spawnProcess(string name, const string[] args = null,
-    const string[string] env = null,
+Pid spawnProcess(string name, const string[] args,
     ProcessOptions options = ProcessOptions.none)
+{
+    return spawnProcessImpl(name, args, environ, options);
+}
+
+
+/// ditto
+Pid spawnProcess(string name, const string[] args,
+    const string[string] environmentVars,
+    ProcessOptions options = ProcessOptions.none)
+{
+    return spawnProcessImpl(name, args, toEnvz(environmentVars), options);
+}
+
+
+private Pid spawnProcessImpl(string name, const string[] args,
+    const char** envz, ProcessOptions options)
 {
     bool redirectStdin  = (options & ProcessOptions.redirectStdin)  > 0;
     bool redirectStdout = (options & ProcessOptions.redirectStdout) > 0;
     bool redirectStderr = (options & ProcessOptions.redirectStderr) > 0;
+    bool redirectStderrToStdout =
+                (options & ProcessOptions.redirectStderrToStdout)   > 0;
+    bool redirectStdoutToStderr =
+                (options & ProcessOptions.redirectStdoutToStderr)   > 0;
+
+    enforce(!(redirectStderr && redirectStderrToStdout)
+        &&  !(redirectStdout && redirectStdoutToStderr),
+        "Invalid combination of ProcessOptions");
+
 
     // Make sure the file exists and is executable.
     if (name.indexOf(std.path.sep) == -1)
@@ -237,10 +273,6 @@ Pid spawnProcess(string name, const string[] args = null,
         enforce(name != null  &&  isExecutable(name),
             "Executable file not found: "~name);
     }
-
-    // If the environment isn't specified, use the parent process'
-    // environment.  If it is, convert to C-style array.
-    const char** envz = (env == null ? environ : toEnvz(env));
 
     // Set up pipes.
     int[2] stdinFDs;
@@ -279,6 +311,27 @@ Pid spawnProcess(string name, const string[] args = null,
             dup2(stderrFDs[1], STDERR_FILENO);
             close(stderrFDs[0]);
             close(stderrFDs[1]);
+        }
+
+        // Switch or combine streams.
+        if (redirectStderrToStdout)
+        {
+            if (redirectStdoutToStderr)
+            {
+                // Switch descriptors for stdout and stderr.
+                int temp = dup(STDERR_FILENO);
+                dup2(STDOUT_FILENO, STDERR_FILENO);
+                dup2(temp, STDOUT_FILENO);
+                close(temp);
+            }
+            else
+            {
+                dup2(STDOUT_FILENO, STDERR_FILENO);
+            }
+        }
+        else if (redirectStdoutToStderr)
+        {
+            dup2(STDERR_FILENO, STDOUT_FILENO);
         }
 
         // Execute program
@@ -347,6 +400,29 @@ private const(char)** toEnvz(const string[string] env)
     return envz.ptr;
 }
 
+
+
+/** Same as the above, only the program name and its arguments are
+    supplied in one (space-separated) string.  If the program name
+    or any of the arguments contain spaces, use the above form instead.
+    ---
+    auto pid = spawnProcess("ls -l");
+    ---
+*/
+Pid spawnProcess(string command, ProcessOptions options = ProcessOptions.none)
+{
+    auto splitCmd = split(command);
+    return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $], environ, options);
+}
+
+/// ditto
+Pid spawnProcess(string command, string[string] environmentVars,
+    ProcessOptions options = ProcessOptions.none)
+{
+    auto splitCmd = split(command);
+    return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
+        toEnvz(environmentVars), options);
+}
 
 
 
