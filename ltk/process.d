@@ -426,15 +426,6 @@ Pid spawnProcess(string command, string[string] environmentVars,
 
 
 
-/** Convenience function that spawns a new process, waits
-    for it to finish, and returns its exit code.
-*/
-int execute(string executable, string[] args = null)
-{
-    return spawnProcess(executable, args).wait();
-}
-
-
 
 /** Execute the given command in the user's default shell (or
     '/bin/sh' if the default shell can't be determined).
