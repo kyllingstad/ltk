@@ -93,8 +93,22 @@ void main()
     assert (pid.stderr.readln().chomp() == "hello error");
     pid.wait();
 
+
+version (Posix)
+{
+    // Pseudo-test of path-searching algorithm on POSIX.
+    pid = spawnProcess("ls -l", ProcessOptions.redirectStdout);
+    bool found = false;
+    foreach (line; pid.stdout.byLine)
+    {
+        if (line.indexOf("deleteme.d") >= 0)  found = true;
+    }
+    assert (pid.wait() == 0);
+    assert (found == true);
+}
+
     
-    // Clean up;
+    // Clean up.
     std.file.remove("deleteme");
     std.file.remove("deleteme.d");  
     std.file.remove("deleteme.o");

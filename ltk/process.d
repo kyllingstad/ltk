@@ -26,6 +26,7 @@ import std.stdio;
 import std.string;
 
 import ltk.file;
+import ltk.system;
 
 
 
@@ -458,7 +459,7 @@ int shell(string cmd, out string output)
 
 private string getShell()
 {
-    auto shellPathz = getenv("SHELL");
+    auto shellPathz = getEnv("SHELL");
     if (shellPathz == null)
         return "/bin/sh";
     return to!string(shellPathz);
@@ -473,7 +474,7 @@ version(Posix)
 
     private string searchPathFor(string executable)
     {
-        auto pathz = getenv("PATH");
+        auto pathz = getEnv("PATH");
         if (pathz == null)  return null;
 
         foreach (dir; splitter(to!string(pathz), pathListSeparator))
