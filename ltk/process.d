@@ -49,7 +49,8 @@ version(Posix)
     executes in parallel with its parent.  To wait for the
     child process to finish, call Pid.wait().  (In general
     one should always do this, to avoid child processes
-    becoming 'zombies' when the parent process exits.)
+    becoming 'zombies' when the parent process exits.
+    Scope guards are perfect for this, see below for examples.)
 
     Unless a directory is specified in the command (or name)
     parameter, this function will search the directories in the
@@ -109,9 +110,11 @@ version(Posix)
     ---
     string[] files;
     auto pipe = Pipe.create();
+
     auto pid = spawnProcess("ls", stdin, pipe.writeEnd);
+    scope(exit) pid.wait();
+
     foreach (f; pipe.readEnd.byLine)  files ~= f.idup;
-    pid.wait();
     ---
     Use the "ls -l" command to get a list of files, pipe the output
     to "grep" and let it filter out all files except D source files,
@@ -122,10 +125,10 @@ version(Posix)
     auto file = File("dfiles.txt", "w");
 
     auto lsPid = spawnProcess("ls -l", stdin, pipe.writeEnd);
-    auto grPid = spawnProcess("grep \\.d", pipe.readEnd, file);
+    scope(exit) lsPid.wait();
     
-    lsPid.wait();
-    grPid.wait();
+    auto grPid = spawnProcess("grep \\.d", pipe.readEnd, file);
+    scope(exit) grPid.wait();
     ---
     Open a set of files with spaces in their names in OpenOffice
     Writer, and make it print any error messages to the standard
@@ -409,7 +412,18 @@ class ChildTerminatedException : Exception
 
 
 
-/** A unidirectional pipe. */
+/** A unidirectional pipe.  Data is written to one end of the pipe
+    and read from the other.
+    ---
+    auto p = Pipe.create();
+    p.writeEnd.writeln("Hello World");
+    assert (p.readEnd.readln().chomp() == "Hello World");
+    ---
+    Pipes can, for example, be used for interprocess communication
+    by spawning a new process and passing one end of the pipe to
+    the child, while the parent uses the other end.  See the
+    spawnProcess() documentation for examples of this.
+*/
 struct Pipe
 {
 private:
@@ -448,9 +462,14 @@ public:
     }
 
 
-    /** Close both ends of the pipe.  (Note: If either end of the pipe
-        has been passed to a child process, it will only be closed in
-        the parent process.)
+    /** Close both ends of the pipe.
+    
+        Normally it is not necessary to do this manually, as File objects
+        are automatically closed when there are no more references to them.
+        (See the std.stdio.File documentation for more info.)
+
+        Note that if either end of the pipe has been passed to a child process,
+        it will only be closed in the parent process.
     */
     void close()
     {
@@ -476,6 +495,10 @@ unittest
 
     The output of the command can be stored in a string and returned
     through the optional output argument.
+    ---
+    string myFiles;
+    shell("ls -l", myFiles);
+    ---
 */
 version(Posix)  int shell(string cmd)
 {
