@@ -9,8 +9,6 @@ module ltk.process;
 
 version(Posix)
 {
-    import core.stdc.errno;
-    import core.stdc.string;
     import core.sys.posix.stdio;
     import core.sys.posix.unistd;
     import core.sys.posix.sys.wait;
@@ -242,8 +240,11 @@ private Pid spawnProcessImpl(string name, const string[] args,
 
         // Execute program
         execve(toStringz(name), toArgz(name, args), envz);
-        throw new Error("Failed to execute program ("~
-            to!string(strerror(errno))~")");
+
+        // If execution fails, exit as quick as possible.
+        perror("spawnProcess(): Failed to execute program");
+        _exit(1);
+        assert (0);
     }
     else
     {
