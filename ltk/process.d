@@ -372,7 +372,7 @@ enum CloseStreams
         $(I unless) they are also the standard input/output/error
         streams of the parent process.
     */
-    stdin = 1,
+    stdin  = 1,
     stdout = 2,                                         /// ditto
     stderr = 4,                                         /// ditto
     all = stdin | stdout | stderr,                      /// ditto
@@ -380,9 +380,9 @@ enum CloseStreams
     /** Close the specified streams, $(I even if they are
         the standard streams of the parent process).
     */
-    forceStdin = 8,
-    forceStdout = 16,                                   /// ditto
-    forceStderr = 32,                                   /// ditto
+    forceStdin  =  8 | stdin,
+    forceStdout = 16 | stdout,                          /// ditto
+    forceStderr = 32 | stderr,                          /// ditto
     forceAll = forceStdin | forceStdout | forceStderr   /// ditto
 }
 
