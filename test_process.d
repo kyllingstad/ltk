@@ -7,7 +7,7 @@ import ltk.process;
 void main()
 {
     immutable string src = "deleteme.d";
-    immutable string exe = "./"~src[0 .. $-2];
+    immutable string exe = "./deleteme";
 
     void compile(string code, string libs = null)
     {
