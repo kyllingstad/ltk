@@ -73,9 +73,11 @@ void main()
             return 1;
         }
     });
-    pid = spawnProcess(exe, ProcessOptions.redirectStdin);
-    pid.stdin.writeln("hello world");
+    auto pipe5 = Pipe.create();
+    pid = spawnProcess(exe, pipe5.readEnd);
+    pipe5.writeEnd.writeln("hello world");
     assert (pid.wait() == 0);
+    pipe5.close();
 
 
     // Test 6: Redirect output and error.
@@ -87,19 +89,21 @@ void main()
             stderr.writeln("hello error");
         }
     });
-    pid = spawnProcess(exe, ProcessOptions.redirectStdout
-        | ProcessOptions.redirectStderr);
-    assert (pid.stdout.readln().chomp() == "hello output");
-    assert (pid.stderr.readln().chomp() == "hello error");
+    auto pipe6o = Pipe.create();
+    auto pipe6e = Pipe.create();
+    pid = spawnProcess(exe, stdin, pipe6o.writeEnd, pipe6e.writeEnd);
+    assert (pipe6o.readEnd.readln().chomp() == "hello output");
+    assert (pipe6e.readEnd.readln().chomp() == "hello error");
     pid.wait();
 
 
 version (Posix)
 {
     // Pseudo-test of path-searching algorithm on POSIX.
-    pid = spawnProcess("ls -l", ProcessOptions.redirectStdout);
+    auto pipeX = Pipe.create();
+    pid = spawnProcess("ls -l", stdin, pipeX.writeEnd);
     bool found = false;
-    foreach (line; pid.stdout.byLine)
+    foreach (line; pipeX.readEnd.byLine)
     {
         if (line.indexOf("deleteme.d") >= 0)  found = true;
     }

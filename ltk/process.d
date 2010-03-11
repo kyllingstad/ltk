@@ -10,7 +10,6 @@ module ltk.process;
 version(Posix)
 {
     import core.stdc.errno;
-    import core.stdc.stdlib;
     import core.stdc.string;
     import core.sys.posix.stdio;
     import core.sys.posix.unistd;
@@ -44,6 +43,268 @@ version(Posix)
 
 
 
+/** Spawn a new process.
+
+    This function returns immediately, and the child process
+    executes in parallel with its parent.  To wait for the
+    child process to finish, call Pid.wait().  (In general
+    one should always do this, to avoid child processes
+    becoming 'zombies' when the parent process exits.)
+
+    Unless a directory is specified in the command (or name)
+    parameter, this function will search the directories in the
+    PATH environment variable for the program.
+
+    Params:
+        command = A string containing the program name and
+            its arguments, separated by spaces.  If the program
+            name or any of the arguments contain spaces, use
+            the third or fourth form of this function, where
+            they are specified separately.
+
+        environmentVars = The environment variables for the
+            child process can be specified using this parameter.
+            If it is omitted, the child process executes in the
+            same environment as the parent process.
+
+        stdin_ = The standard input stream of the child process.
+            This can be any File that is opened for reading.  By
+            default the child process inherits the parent's input
+            stream.
+
+        stdout_ = The standard output stream of the child process.
+            This can be any File that is opened for writing.  By
+            default the child process inherits the parent's output
+            stream.
+
+        stderr_ = The standard error stream of the child process.
+            This can be any File that is opened for writing.  By
+            default the child process inherits the parent's error
+            stream.
+
+        closeStreams = Control which of the given File objects are
+            closed in the parent process when this function returns
+            (see below for more info).
+
+        name = The name of the executable file.
+
+        args = The command line arguments to give to the program.
+            (There is no need to specify the program name as the
+            zeroth argument, this is done automatically.)
+
+    Note:
+    If you pass a File object that is $(I not) one of the standard
+    input/output/error streams of the parent process, that stream
+    will by default be closed in the parent process when this
+    function returns.  Use the closeStreams argument to control which
+    streams are closed or not.
+
+    Examples:
+    Open firefox on the D homepage and wait for it to complete:
+    ---
+    auto pid = spawnProcess("firefox http://www.digitalmars.com/d/2.0");
+    pid.wait();
+    ---
+    Use the "ls" command to retrieve a list of files:
+    ---
+    string[] files;
+    auto pipe = Pipe.create();
+    auto pid = spawnProcess("ls", stdin, pipe.writeEnd);
+    foreach (f; pipe.readEnd.byLine)  files ~= f;
+    pid.wait();
+    ---
+    Use the "ls -l" command to get a list of files, pipe the output
+    to "grep" and let it filter out all files except D source files,
+    and write the output to the file "dfiles.txt".
+    ---
+    // Let's emulate the command "ls -l | grep \.d > dfiles.txt"
+    auto pipe = Pipe.create();
+    auto file = File("dfiles.txt", "w");
+
+    auto lsPid = spawnProcess("ls -l", stdin, pipe.writeEnd);
+    auto grPid = spawnProcess("grep \\.d", pipe.readEnd, file);
+    
+    lsPid.wait();
+    grPid.wait();
+    ---
+*/
+Pid spawnProcess(string command,
+    File stdin_ = std.stdio.stdin,
+    File stdout_ = std.stdio.stdout,
+    File stderr_ = std.stdio.stderr,
+    CloseStreams closeStreams = CloseStreams.all)
+{
+    auto splitCmd = split(command);
+    return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
+        environ,
+        stdin_, stdout_, stderr_, closeStreams);
+}
+
+
+/// ditto
+Pid spawnProcess(string command, string[string] environmentVars,
+    File stdin_ = std.stdio.stdin,
+    File stdout_ = std.stdio.stdout,
+    File stderr_ = std.stdio.stderr,
+    CloseStreams closeStreams = CloseStreams.all)
+{
+    auto splitCmd = split(command);
+    return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
+        toEnvz(environmentVars),
+        stdin_, stdout_, stderr_, closeStreams);
+}
+
+
+/// ditto
+Pid spawnProcess(string name, const string[] args,
+    File stdin_ = std.stdio.stdin,
+    File stdout_ = std.stdio.stdout,
+    File stderr_ = std.stdio.stderr,
+    CloseStreams closeStreams = CloseStreams.all)
+{
+    return spawnProcessImpl(name, args,
+        environ,
+        stdin_, stdout_, stderr_, closeStreams);
+}
+
+
+/// ditto
+Pid spawnProcess(string name, const string[] args,
+    string[string] environmentVars,
+    File stdin_ = std.stdio.stdin,
+    File stdout_ = std.stdio.stdout,
+    File stderr_ = std.stdio.stderr,
+    CloseStreams closeStreams = CloseStreams.all)
+{
+    return spawnProcessImpl(name, args,
+        toEnvz(environmentVars),
+        stdin_, stdout_, stderr_, closeStreams);
+}
+
+
+// The actual implementation of the above.
+private Pid spawnProcessImpl(string name, const string[] args,
+    const char** envz, File stdin_, File stdout_, File stderr_,
+    CloseStreams closeStreams)
+{
+    // Make sure the file exists and is executable.
+    if (name.indexOf(std.path.sep) == -1)
+    {
+        name = searchPathFor(name);
+        enforce(name != null, "Executable file not found: "~name);
+    }
+    else
+    {
+        enforce(name != null  &&  isExecutable(name),
+            "Executable file not found: "~name);
+    }
+
+    // Get the file descriptors of the streams.
+    int stdinFD  = core.stdc.stdio.fileno(stdin_.getFP());
+    errnoEnforce(stdinFD != -1, "Invalid stdin stream");
+    int stdoutFD = core.stdc.stdio.fileno(stdout_.getFP());
+    errnoEnforce(stdoutFD != -1, "Invalid stdout stream");
+    int stderrFD = core.stdc.stdio.fileno(stderr_.getFP());
+    errnoEnforce(stderrFD != -1, "Invalid stderr stream");
+
+    Pid pid;
+    pid._pid = fork();
+    errnoEnforce (pid._pid >= 0, "Cannot spawn new process");
+    
+    if (pid._pid == 0)
+    {
+        // Child process
+
+        // Redirect streams and close the old file descriptors.
+        // In the case that stderr is redirected to stdout, we need
+        // to backup the file descriptor since stdout may be redirected
+        // as well.
+        if (stderrFD == STDOUT_FILENO)  stderrFD = dup(stderrFD);
+        dup2(stdinFD,  STDIN_FILENO);
+        dup2(stdoutFD, STDOUT_FILENO);
+        dup2(stderrFD, STDERR_FILENO);
+
+        // Close the old file descriptors, unless they are
+        // either of the standard streams.
+        if (stdinFD  > STDERR_FILENO)  close(stdinFD);
+        if (stdoutFD > STDERR_FILENO)  close(stdoutFD);
+        if (stderrFD > STDERR_FILENO)  close(stderrFD);
+
+        // Execute program
+        execve(toStringz(name), toArgz(name, args), envz);
+        throw new Error("Failed to execute program ("~
+            to!string(strerror(errno))~")");
+    }
+    else
+    {
+        // Parent process:  Close streams and return.
+
+        if ((stdinFD > STDERR_FILENO && (closeStreams & CloseStreams.stdin))
+            || (closeStreams & CloseStreams.forceStdin))  stdin_.close();
+
+        if ((stdoutFD > STDERR_FILENO && (closeStreams & CloseStreams.stdout))
+            || (closeStreams & CloseStreams.forceStdout))  stdout_.close();
+
+        if ((stderrFD > STDERR_FILENO && (closeStreams & CloseStreams.stderr))
+            || (closeStreams & CloseStreams.forceStderr))  stderr_.close();
+
+        return pid;
+    }
+}
+
+// Search the PATH variable for the given executable file,
+// (checking that it is in fact executable).
+version(Posix)  private string searchPathFor(string executable)
+{
+    enum char pathListSeparator = ':';
+
+    auto pathz = getEnv("PATH");
+    if (pathz == null)  return null;
+
+    foreach (dir; splitter(to!string(pathz), pathListSeparator))
+    {
+        auto execPath = join(dir, executable);
+        if (isExecutable(execPath))  return execPath;
+    }
+
+    return null;
+}
+
+// Convert a C array of C strings to a string[] array,
+// setting the program name as the zeroth element.
+private const(char)** toArgz(string prog, const string[] args)
+{
+    alias const(char)* stringz_t;
+    auto argz = new stringz_t[](args.length+2);
+    
+    argz[0] = toStringz(prog);
+    foreach (i; 0 .. args.length)
+    {
+        argz[i+1] = toStringz(args[i]);
+    }
+    argz[$-1] = null;
+    return argz.ptr;
+}
+
+// Convert a C array of C strings on the form "key=value"
+// to a string[string] array.
+private const(char)** toEnvz(const string[string] env)
+{
+    alias const(char)* stringz_t;
+    auto envz = new stringz_t[](env.length+1);
+    int i = 0;
+    foreach (k, v; env)
+    {
+        envz[i] = (k~'='~v~'\0').ptr;
+        i++;
+    }
+    envz[$-1] = null;
+    return envz.ptr;
+}
+
+
+
+
 /** A running process. */
 struct Pid
 {
@@ -51,43 +312,11 @@ private:
     // Process ID
     int _pid = -1;
 
-    // The process' standard input, output and error streams, respectively.
-    File _stdin;
-    File _stdout;
-    File _stderr;
-
 
 public:
 
     /** The process ID. */
     @property int pid()  { return _pid; }
-
-
-    /** The standard input, output and error streams of the process,
-        respectively. Stdin is opened for writing, while stdout and
-        stderr are opened for reading.
-
-        Note that the corresponding ProcessOptions.redirectStdXXX
-        option(s) must be passed to spawnProcess() for these streams
-        to be valid. An exception will be thrown if one attempts to
-        write to or read from an unredirected stream.
-    */
-    @property File stdin()
-    {
-        return _stdin;
-    }
-
-    /// ditto
-    @property File stdout()
-    {
-        return _stdout;
-    }
-
-    /// ditto
-    @property File stderr()
-    {
-        return _stderr;
-    }
 
 
     /** Wait for the spawned process to terminate.
@@ -114,7 +343,39 @@ public:
         }
         assert (0);
     }
+
 }
+
+
+
+
+/** Options controlling which streams are closed in the parent
+    process when spawnProcess() returns.
+*/
+enum CloseStreams
+{
+    /** Don't close any of the streams. */
+    none = 0,
+
+    /** Close the streams that are given as the standard
+        input/output/error streams of the child process,
+        $(I unless) they are also the standard input/output/error
+        streams of the parent process.
+    */
+    stdin = 1,
+    stdout = 2,                                         /// ditto
+    stderr = 4,                                         /// ditto
+    all = stdin | stdout | stderr,                      /// ditto
+
+    /** Close the specified streams, $(I even if they are
+        the standard streams of the parent process).
+    */
+    forceStdin = 8,
+    forceStdout = 16,                                   /// ditto
+    forceStderr = 32,                                   /// ditto
+    forceAll = forceStdin | forceStdout | forceStderr   /// ditto
+}
+
 
 
 
@@ -140,289 +401,62 @@ class ChildTerminatedException : Exception
 
 
 
-/** Options that can be ORed together and passed to spawnProcess. */
-enum ProcessOptions
-{
-    none = 0,
 
-    /** Redirect the spawned process' standard input, output, and/or
-        error streams so they can be written (stdin) or read (stdout,
-        stderr) by the parent process. Use the Pid.stdXXX properties
-        to get the file handles of the streams.
+/** A unidirectional pipe. */
+struct Pipe
+{
+private:
+    File _read, _write;
+
+
+public:
+    /** The read end of the pipe. */
+    @property File readEnd() { return _read; }
+
+
+    /** The write end of the pipe. */
+    @property File writeEnd() { return _write; }
+
+
+    /** Create a new pipe. */
+    static Pipe create()
+    {
+        int[2] fds;
+        errnoEnforce(pipe(&fds) == 0, "Unable to create pipe");
+
+        Pipe p;
+        
+        // TODO: Using the internals of File like this feels like a hack,
+        // but the File.wrapFile() function disables automatic closing of
+        // the file.  Perhaps there should be a protected version of
+        // wrapFile() that fills this purpose?
+        p._read.p = new File.Impl(
+            errnoEnforce(fdopen(fds[0], "r"), "Cannot open read end of pipe"),
+            1, null);
+        p._write.p = new File.Impl(
+            errnoEnforce(fdopen(fds[1], "w"), "Cannot open write end of pipe"),
+            1, null);
+
+        return p;
+    }
+
+
+    /** Close both ends of the pipe.  (Note: If either end of the pipe
+        has been passed to a child process, it will only be closed in
+        the parent process.)
     */
-    redirectStdin = 1,
-
-    /// ditto
-    redirectStdout = 2,
-
-    /// ditto
-    redirectStderr = 4,
-
-    /** Redirect the spawned process' standard error stream into
-        its output stream. This cannot be combined with the
-        redirectStderr option.
-    */
-    redirectStderrToStdout = 8,
-
-    /** Redirect the spawned process' standard output stream into
-        its error stream. This cannot be combined with the
-        redirectStdout option.
-    */
-    redirectStdoutToStderr = 16,
-}
-
-
-
-/** Spawn a new process.
-    This function returns immediately, and the child process
-    executes in parallel with its parent. To wait for the
-    child process to finish, call Pid.wait().
-
-    Example:
-    ---
-    import std.stdio, ltk.process;
-
-    void main()
+    void close()
     {
-        // The 'cat' program will echo everything we send to it.
-        auto pid = spawnProcess("/bin/cat", null,
-            ProcessOptions.redirectStdin | ProcessOptions.redirectStdout);
-
-        auto pin = pid.stdin;
-        auto pout = pid.stdout;
-
-        // Read lines from the terminal and send them to cat,
-        // then read and print its response.
-        do
-        {
-            write("> ");
-            auto input = stdin.readln();
-            pin.write(inp);
-            pin.flush();
-
-            auto output = pout.readln();
-            write("< ", output);
-        } while (chomp(input) != "exit");
-    }
-    ---
-    $(I cat) will automatically exit when it has reached the end
-    of its input stream. In the example above this happens when
-    the user types "quit", because all files are closed when
-    the main() function returns. This includes the pipes to the
-    child process.
-    
-    In general it is a good idea
-    to wait for all child processes to finish so they don't
-    become 'zombies'. As an example, here's a program that
-    executes two programs in parallel:
-    ---
-    import ltk.process;
-
-    void main(string[] args)
-    {
-        // Start two programs in parallel and wait for both to finish.
-        assert (args.length == 3);
-
-        auto pid1 = spawnProcess(args[1]);
-        auto pid2 = spawnProcess(args[2]);
-
-        pid1.wait();
-        pid2.wait();
-    }
-    ---
-*/
-Pid spawnProcess(string name, const string[] args,
-    ProcessOptions options = ProcessOptions.none)
-{
-    return spawnProcessImpl(name, args, environ, options);
-}
-
-
-/// ditto
-Pid spawnProcess(string name, const string[] args,
-    const string[string] environmentVars,
-    ProcessOptions options = ProcessOptions.none)
-{
-    return spawnProcessImpl(name, args, toEnvz(environmentVars), options);
-}
-
-
-private Pid spawnProcessImpl(string name, const string[] args,
-    const char** envz, ProcessOptions options)
-{
-    bool redirectStdin  = (options & ProcessOptions.redirectStdin)  > 0;
-    bool redirectStdout = (options & ProcessOptions.redirectStdout) > 0;
-    bool redirectStderr = (options & ProcessOptions.redirectStderr) > 0;
-    bool redirectStderrToStdout =
-                (options & ProcessOptions.redirectStderrToStdout)   > 0;
-    bool redirectStdoutToStderr =
-                (options & ProcessOptions.redirectStdoutToStderr)   > 0;
-
-    enforce(!(redirectStderr && redirectStderrToStdout)
-        &&  !(redirectStdout && redirectStdoutToStderr),
-        "Invalid combination of ProcessOptions");
-
-
-    // Make sure the file exists and is executable.
-    if (name.indexOf(std.path.sep) == -1)
-    {
-        name = searchPathFor(name);
-        enforce(name != null, "Executable file not found: "~name);
-    }
-    else
-    {
-        enforce(name != null  &&  isExecutable(name),
-            "Executable file not found: "~name);
-    }
-
-    // Set up pipes.
-    int[2] stdinFDs;
-    int[2] stdoutFDs;
-    int[2] stderrFDs;
-
-    int pipeStatus = 0;
-    if (redirectStdin)  pipeStatus += pipe(&stdinFDs);
-    if (redirectStdout) pipeStatus += pipe(&stdoutFDs);
-    if (redirectStderr) pipeStatus += pipe(&stderrFDs);
-    errnoEnforce (pipeStatus == 0, "Unable to create pipe");
-
-    Pid pid;
-    pid._pid = fork();
-    errnoEnforce (pid._pid >= 0, "Cannot spawn new process");
-    
-    if (pid._pid == 0)
-    {
-        // Child process
-
-        // Redirect streams and close the old file descriptors.
-        if (redirectStdin)
-        {
-            dup2(stdinFDs[0], STDIN_FILENO);
-            close(stdinFDs[0]);
-            close(stdinFDs[1]);
-        }
-        if (redirectStdout)
-        {
-            dup2(stdoutFDs[1], STDOUT_FILENO);
-            close(stdoutFDs[0]);
-            close(stdoutFDs[1]);
-        }
-        if (redirectStderr)
-        {
-            dup2(stderrFDs[1], STDERR_FILENO);
-            close(stderrFDs[0]);
-            close(stderrFDs[1]);
-        }
-
-        // Switch or combine streams.
-        if (redirectStderrToStdout)
-        {
-            if (redirectStdoutToStderr)
-            {
-                // Switch descriptors for stdout and stderr.
-                int temp = dup(STDERR_FILENO);
-                dup2(STDOUT_FILENO, STDERR_FILENO);
-                dup2(temp, STDOUT_FILENO);
-                close(temp);
-            }
-            else
-            {
-                dup2(STDOUT_FILENO, STDERR_FILENO);
-            }
-        }
-        else if (redirectStdoutToStderr)
-        {
-            dup2(STDERR_FILENO, STDOUT_FILENO);
-        }
-
-        // Execute program
-        execve(toStringz(name), toArgz(name, args), envz);
-        throw new Error("Failed to execute program ("~
-            to!string(strerror(errno))~")");
-    }
-    else
-    {
-        // Parent process
-
-        // Close the pipe ends we don't need and store the file
-        // descriptors of the open ends.
-        if (redirectStdin)
-        {
-            close(stdinFDs[0]);
-            auto f = fdopen(stdinFDs[1], "w");
-            errnoEnforce(f != null, "Unable to open stdin pipe");
-            pid._stdin = File.wrapFile(f);
-        }
-        if (redirectStdout)
-        {
-            close(stdoutFDs[1]);
-            auto f = fdopen(stdoutFDs[0], "r");
-            errnoEnforce(f != null, "Unable to open stdout pipe");
-            pid._stdout = File.wrapFile(f);
-        }
-        if (redirectStderr)
-        {
-            close(stderrFDs[1]);
-            auto f = fdopen(stderrFDs[0], "r");
-            errnoEnforce(f != null, "Unable to open stderr pipe");
-            pid._stderr = File.wrapFile(f);
-        }
-
-        return pid;
+        _read.close();
+        _write.close();
     }
 }
 
-
-private const(char)** toArgz(string path, const string[] args)
+unittest
 {
-    alias const(char)* stringz_t;
-    auto argz = new stringz_t[](args.length+2);
-    
-    argz[0] = toStringz(path);
-    foreach (i; 0 .. args.length)
-    {
-        argz[i+1] = toStringz(args[i]);
-    }
-    argz[$-1] = null;
-    return argz.ptr;
-}
-
-private const(char)** toEnvz(const string[string] env)
-{
-    alias const(char)* stringz_t;
-    auto envz = new stringz_t[](env.length+1);
-    int i = 0;
-    foreach (k, v; env)
-    {
-        envz[i] = (k~'='~v~'\0').ptr;
-        i++;
-    }
-    envz[$-1] = null;
-    return envz.ptr;
-}
-
-
-
-/** Same as the above, only the program name and its arguments are
-    supplied in one (space-separated) string.  If the program name
-    or any of the arguments contain spaces, use the above form instead.
-    ---
-    auto pid = spawnProcess("ls -l");
-    ---
-*/
-Pid spawnProcess(string command, ProcessOptions options = ProcessOptions.none)
-{
-    auto splitCmd = split(command);
-    return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $], environ, options);
-}
-
-/// ditto
-Pid spawnProcess(string command, string[string] environmentVars,
-    ProcessOptions options = ProcessOptions.none)
-{
-    auto splitCmd = split(command);
-    return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
-        toEnvz(environmentVars), options);
+    auto p = Pipe.create();
+    p.writeEnd.writeln("Hello World");
+    assert (p.readEnd.readln().chomp() == "Hello World");
 }
 
 
@@ -436,7 +470,7 @@ Pid spawnProcess(string command, string[string] environmentVars,
     The output of the command can be stored in a string and returned
     through the optional output argument.
 */
-int shell(string cmd)
+version(Posix)  int shell(string cmd)
 {
     string[2] args = ["-c", cmd];
     return spawnProcess(getShell(), ["-c", cmd]).wait();
@@ -444,45 +478,24 @@ int shell(string cmd)
 
 
 /// ditto
-int shell(string cmd, out string output)
+version(Posix)  int shell(string cmd, out string output)
 {
     string[2] args = ["-c", cmd];
-    auto pid = spawnProcess(getShell, ["-c", cmd], null,
-        ProcessOptions.redirectStdout);
+    auto p = Pipe.create();
+    auto pid = spawnProcess(getShell, ["-c", cmd], std.stdio.stdin, p.writeEnd);
     
     Appender!string a;
-    foreach (line; pid.stdout.byLine(File.KeepTerminator.yes))  a.put(line);
+    foreach (line; p.readEnd.byLine(File.KeepTerminator.yes))  a.put(line);
     output = a.data;
     return pid.wait();
 }
 
 
-private string getShell()
+// Get the user's default shell, defaulting to /bin/sh.
+version(Posix)  private string getShell()
 {
     auto shellPathz = getEnv("SHELL");
     if (shellPathz == null)
         return "/bin/sh";
     return to!string(shellPathz);
-}
-
-
-
-// Windows searches the path by default.
-version(Posix)
-{
-    enum char pathListSeparator = ':';
-
-    private string searchPathFor(string executable)
-    {
-        auto pathz = getEnv("PATH");
-        if (pathz == null)  return null;
-
-        foreach (dir; splitter(to!string(pathz), pathListSeparator))
-        {
-            auto execPath = join(dir, executable);
-            if (isExecutable(execPath))  return execPath;
-        }
-
-        return null;
-    }
 }
