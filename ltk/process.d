@@ -110,12 +110,12 @@ version(Posix)
     string[] files;
     auto pipe = Pipe.create();
     auto pid = spawnProcess("ls", stdin, pipe.writeEnd);
-    foreach (f; pipe.readEnd.byLine)  files ~= f;
+    foreach (f; pipe.readEnd.byLine)  files ~= f.idup;
     pid.wait();
     ---
     Use the "ls -l" command to get a list of files, pipe the output
     to "grep" and let it filter out all files except D source files,
-    and write the output to the file "dfiles.txt".
+    and write the output to the file "dfiles.txt":
     ---
     // Let's emulate the command "ls -l | grep \.d > dfiles.txt"
     auto pipe = Pipe.create();
@@ -126,6 +126,13 @@ version(Posix)
     
     lsPid.wait();
     grPid.wait();
+    ---
+    Open a set of files with spaces in their names in OpenOffice
+    Writer, and make it print any error messages to the standard
+    output stream:
+    ---
+    spawnProcess("oowriter", ["my document.odt", "your document.odt"],
+        stdin, stdout, stdout);
     ---
 */
 Pid spawnProcess(string command,
