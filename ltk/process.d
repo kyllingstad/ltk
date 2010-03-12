@@ -37,6 +37,13 @@ version(Posix)
     // but the POSIX spec doesn't mention it:
     extern(C) extern __gshared const char** environ;
 }
+else version(Windows)
+{
+    // Use the same spawnProcess() implementations on both Windows
+    // and POSIX, only the spawnProcessImpl() function has to be
+    // different.
+    const char** environ = null;
+}
 
 
 
@@ -84,6 +91,9 @@ version(Posix)
         closeStreams = Control which of the given File objects are
             closed in the parent process when this function returns
             (see below for more info).
+
+        gui = Whether to open a graphical console for the process.
+            This option is for Windows, on POSIX it has no effect.
 
         name = The name of the executable file.
 
@@ -140,12 +150,12 @@ Pid spawnProcess(string command,
     File stdin_ = std.stdio.stdin,
     File stdout_ = std.stdio.stdout,
     File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all)
+    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
 {
     auto splitCmd = split(command);
     return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
         environ,
-        stdin_, stdout_, stderr_, closeStreams);
+        stdin_, stdout_, stderr_, closeStreams, gui);
 }
 
 
@@ -154,12 +164,12 @@ Pid spawnProcess(string command, string[string] environmentVars,
     File stdin_ = std.stdio.stdin,
     File stdout_ = std.stdio.stdout,
     File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all)
+    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
 {
     auto splitCmd = split(command);
     return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
         toEnvz(environmentVars),
-        stdin_, stdout_, stderr_, closeStreams);
+        stdin_, stdout_, stderr_, closeStreams, gui);
 }
 
 
@@ -168,11 +178,11 @@ Pid spawnProcess(string name, const string[] args,
     File stdin_ = std.stdio.stdin,
     File stdout_ = std.stdio.stdout,
     File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all)
+    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
 {
     return spawnProcessImpl(name, args,
         environ,
-        stdin_, stdout_, stderr_, closeStreams);
+        stdin_, stdout_, stderr_, closeStreams, gui);
 }
 
 
@@ -182,18 +192,19 @@ Pid spawnProcess(string name, const string[] args,
     File stdin_ = std.stdio.stdin,
     File stdout_ = std.stdio.stdout,
     File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all)
+    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
 {
     return spawnProcessImpl(name, args,
         toEnvz(environmentVars),
-        stdin_, stdout_, stderr_, closeStreams);
+        stdin_, stdout_, stderr_, closeStreams, gui);
 }
 
 
 // The actual implementation of the above.
-private Pid spawnProcessImpl(string name, const string[] args,
-    const char** envz, File stdin_, File stdout_, File stderr_,
-    CloseStreams closeStreams)
+version(Posix) private Pid spawnProcessImpl
+    (string name, const string[] args, const char** envz,
+    File stdin_, File stdout_, File stderr_, CloseStreams closeStreams,
+    bool gui)
 {
     // Make sure the file exists and is executable.
     if (name.indexOf(std.path.sep) == -1)
@@ -283,7 +294,7 @@ version(Posix)  private string searchPathFor(string executable)
 
 // Convert a C array of C strings to a string[] array,
 // setting the program name as the zeroth element.
-private const(char)** toArgz(string prog, const string[] args)
+version(Posix) private const(char)** toArgz(string prog, const string[] args)
 {
     alias const(char)* stringz_t;
     auto argz = new stringz_t[](args.length+2);
@@ -297,9 +308,9 @@ private const(char)** toArgz(string prog, const string[] args)
     return argz.ptr;
 }
 
-// Convert a C array of C strings on the form "key=value"
-// to a string[string] array.
-private const(char)** toEnvz(const string[string] env)
+// Convert a string[string] array to a C array of C strings
+// on the form "key=value".
+version(Posix) private const(char)** toEnvz(const string[string] env)
 {
     alias const(char)* stringz_t;
     auto envz = new stringz_t[](env.length+1);
@@ -330,14 +341,16 @@ public:
     @property int pid()  { return _pid; }
 
 
-    /** Wait for the spawned process to terminate.
-        If the process terminates normally, this function returns
-        its exit status.
-        If the process is terminated by a signal, a
-        ChildTerminatedException with the relevant signal number
-        is thrown.
+    /** Wait for the spawned process to terminate and return its
+        exit status.
+
+        Note:
+        On POSIX systems, if the process is terminated by a signal,
+        this function returns a negative number whose absolute value
+        is the signal number.  (POSIX restricts normal exit codes
+        to the range 0-255.)
     */
-    int wait()
+    version(Posix) int wait()
     {
         int status;
         while(true)
@@ -349,7 +362,7 @@ public:
             }
             else if (WIFSIGNALED(status))
             {
-                throw new ChildTerminatedException(_pid, WTERMSIG(status));
+                return -WTERMSIG(status);
             }
         }
         assert (0);
@@ -390,29 +403,6 @@ enum CloseStreams
 
 
 
-/** Exception thrown if a process that is wait()ed for
-    is terminated by a signal.
-*/
-class ChildTerminatedException : Exception
-{
-    /** The process ID of the terminated process. */
-    immutable int pid;
-    
-    /** The signal that terminated the process. */
-    immutable int signal;
-
-    this (int p, int s)
-    {
-        super ("Process "~to!string(p)~" was terminated by signal "
-            ~to!string(s));
-        pid = p;
-        signal = s;
-    }
-}
-
-
-
-
 /** A unidirectional pipe.  Data is written to one end of the pipe
     and read from the other.
     ---
@@ -441,7 +431,7 @@ public:
 
 
     /** Create a new pipe. */
-    static Pipe create()
+    version(Posix) static Pipe create()
     {
         int[2] fds;
         errnoEnforce(pipe(&fds) == 0, "Unable to create pipe");

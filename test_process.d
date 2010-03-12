@@ -3,6 +3,11 @@ import std.stdio;
 import std.string;
 import ltk.process;
 
+version(Posix)
+{
+    import core.sys.posix.signal;
+}
+
 
 void main()
 {
@@ -22,6 +27,13 @@ void main()
         static int i = 0;
         ++i;
         writeln(i, " OK");
+    }
+    
+    void pok()
+    {
+        static int i = 0;
+        ++i;
+        writeln("P", i, " OK");
     }
 
 
@@ -113,7 +125,17 @@ void main()
 
 version (Posix)
 {
-    // Pseudo-test of path-searching algorithm on POSIX.
+    // POSIX test 1: Terminate by signal.
+    compile(q{
+        void main() { while(true) { } }
+    });
+    pid = spawnProcess(exe);
+    kill(pid.pid, SIGTERM);
+    assert (pid.wait() == -SIGTERM);
+    pok();
+
+
+    // POSIX test 2: Pseudo-test of path-searching algorithm.
     auto pipeX = Pipe.create();
     pid = spawnProcess("ls -l", stdin, pipeX.writeEnd);
     bool found = false;
@@ -123,13 +145,13 @@ version (Posix)
     }
     assert (pid.wait() == 0);
     assert (found == true);
-    ok();
+    pok();
 }
 
     
     // Clean up.
     std.file.remove("deleteme");
-    std.file.remove("deleteme.d");  
+    std.file.remove("deleteme.d");
     std.file.remove("deleteme.o");
 }
 
