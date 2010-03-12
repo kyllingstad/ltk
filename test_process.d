@@ -17,6 +17,14 @@ void main()
         assert (shell(compile) == 0, "Failed compilation: "~compile);
     }
 
+    void ok()
+    {
+        static int i = 0;
+        ++i;
+        writeln(i, " OK");
+    }
+
+
     Pid pid;
 
 
@@ -25,6 +33,7 @@ void main()
         void main() { }
     });
     assert (spawnProcess(exe).wait() == 0);
+    ok();
 
 
     // Test 2:  Start a process that returns a nonzero exit code.
@@ -32,6 +41,7 @@ void main()
         int main() { return 123; }
     });
     assert (spawnProcess(exe).wait() == 123);
+    ok();
 
 
     // Test 3:  Supply arguments.
@@ -45,6 +55,7 @@ void main()
     });
     assert (spawnProcess(exe, ["hello", "world"]).wait() == 0);
     assert (spawnProcess(exe~" hello world").wait() == 0);
+    ok();
 
 
     // Test 4: Supply environment variables.
@@ -62,6 +73,7 @@ void main()
     env["hello"] = "world";
     assert (spawnProcess(exe, null, env).wait() == 0);
     assert (spawnProcess(exe, env).wait() == 0);
+    ok();
 
 
     // Test 5: Redirect input.
@@ -78,6 +90,7 @@ void main()
     pipe5.writeEnd.writeln("hello world");
     assert (pid.wait() == 0);
     pipe5.close();
+    ok();
 
 
     // Test 6: Redirect output and error.
@@ -95,6 +108,7 @@ void main()
     assert (pipe6o.readEnd.readln().chomp() == "hello output");
     assert (pipe6e.readEnd.readln().chomp() == "hello error");
     pid.wait();
+    ok();
 
 
 version (Posix)
@@ -109,6 +123,7 @@ version (Posix)
     }
     assert (pid.wait() == 0);
     assert (found == true);
+    ok();
 }
 
     
