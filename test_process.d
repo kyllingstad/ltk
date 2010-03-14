@@ -130,7 +130,7 @@ version (Posix)
         void main() { while(true) { } }
     });
     pid = spawnProcess(exe);
-    kill(pid.pid, SIGTERM);
+    kill(pid.processID, SIGTERM);
     assert (pid.wait() == -SIGTERM);
     pok();
 

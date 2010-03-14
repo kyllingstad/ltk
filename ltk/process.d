@@ -1,4 +1,46 @@
-/** Facilities for executing other processes.
+/** Facilities for executing processes.
+
+    The most basic function in this module is the spawnProcess() function.
+    It spawns a new process, assigns it a set of input/output/error streams,
+    and returns immediately, leaving the child process to execute in parallel
+    with its parent.
+
+    In general, the parent process should always wait for all child processes
+    to finish before it terminates.  Otherwise the child processes
+    may become 'zombies', i.e. defunct processes that only take up slots
+    in the OS process table.  Use the Pid.wait() function to do this.
+    (Tip:  Scope guards are a convenient way to do this.  See the
+    spawnProcess() documentation below for examples.)
+
+    In addition to spawnProcess() there are a set of convenience functions
+    that take care of the most common tasks:
+    $(UL $(LI
+        pipeProcess() and pipeShell() automatically create a set of
+        pipes that allow the parent to communicate with the child
+        through the child's standard input, output, and/or error streams.
+        These functions correspond roughly to C's popen() function.)
+    $(LI
+        execute() and shell() start a new process and wait for it
+        to complete before returning.  Optionally, they can capture
+        the process' standard output and return it as a string.
+        These correspond roughly to C's system() function.
+    ))
+    The functions that have names containing "shell" run the given command
+    through the user's default command interpreter.  On Windows, this is
+    the $(I cmd) program, on POSIX it is determined by the SHELL environment
+    variable (defaulting to '/bin/sh' if it cannot be determined).  The
+    command is specified as a single string which is sent directly to the
+    shell.
+
+    The other commands all have two forms, one where the program name
+    and its arguments are specified in a single string parameter, separated
+    by spaces, and one where the arguments are specified as an array of
+    strings.  Use the latter whenever the program name or any of the arguments
+    contain spaces.
+    
+    Unless the program name contains a directory, all functions will
+    search the directories specified in the PATH environment variable
+    for the executable.
 
     Authors:    Lars Tandle Kyllingstad
     Copyright:  Copyright (c) 2010, Lars T. Kyllingstad. All rights reserved.
@@ -22,7 +64,6 @@ import std.path;
 import std.stdio;
 import std.string;
 
-import ltk.file;
 import ltk.system;
 
 
@@ -36,6 +77,9 @@ version(Posix)
     // Some sources say this is supposed to be defined in unistd.h,
     // but the POSIX spec doesn't mention it:
     extern(C) extern __gshared const char** environ;
+
+    // For the 'shell' commands:
+    private immutable string shellSwitch = "-c";
 }
 else version(Windows)
 {
@@ -43,6 +87,9 @@ else version(Windows)
     // and POSIX, only the spawnProcessImpl() function has to be
     // different.
     const char** environ = null;
+
+    // For the 'shell' commands:
+    private immutable string shellSwitch = "/C";
 }
 
 
@@ -109,7 +156,7 @@ else version(Windows)
     streams are closed or not.
 
     Examples:
-    Open firefox on the D homepage and wait for it to complete:
+    Open Firefox on the D homepage and wait for it to complete:
     ---
     auto pid = spawnProcess("firefox http://www.digitalmars.com/d/2.0");
     pid.wait();
@@ -276,7 +323,7 @@ version(Posix) private Pid spawnProcessImpl
 
 // Search the PATH variable for the given executable file,
 // (checking that it is in fact executable).
-version(Posix)  private string searchPathFor(string executable)
+version(Posix) private string searchPathFor(string executable)
 {
     enum char pathListSeparator = ':';
 
@@ -324,10 +371,17 @@ version(Posix) private const(char)** toEnvz(const string[string] env)
     return envz.ptr;
 }
 
+// Check whether the file exists and can be executed by the
+// current user.
+version(Posix) private bool isExecutable(string path)
+{
+    return (access(toStringz(path), X_OK) == 0);
+}
 
 
 
-/** A running process. */
+
+/** A handle corresponding to a spawned process. */
 struct Pid
 {
 private:
@@ -338,7 +392,11 @@ private:
 public:
 
     /** The process ID. */
-    @property int pid()  { return _pid; }
+    @property int processID()
+    {
+        enforce(_pid >= 0, "Pid not initialized.");
+        return _pid;
+    }
 
 
     /** Wait for the spawned process to terminate and return its
@@ -352,6 +410,7 @@ public:
     */
     version(Posix) int wait()
     {
+        enforce(_pid >= 0, "Pid not initialized.");
         int status;
         while(true)
         {
@@ -479,6 +538,237 @@ unittest
 
 
 
+/** Start a new process, and create pipes to redirect its standard
+    input, output and/or error streams.  This function returns
+    immediately, leaving the child process to execute in parallel
+    with the parent.
+
+    ---
+    auto pipes = pipeProcess("my_application");
+
+    // Store lines of output.
+    string[] output;
+    foreach (line; pipes.stdout.byLine) output ~= line.idup;
+
+    // Store lines of errors.
+    string[] errors;
+    foreach (line; pipes.stderr.byLine) errors ~= line.idup;
+    ---
+*/
+ProcessPipes pipeProcess(string command,
+    Redirect redirectFlags = Redirect.all, bool gui = false)
+{
+    auto splitCmd = split(command);
+    return pipeProcess(splitCmd[0], splitCmd[1 .. $], redirectFlags, gui);
+}
+
+
+/// ditto
+ProcessPipes pipeProcess(string name, string[] args,
+    Redirect redirectFlags = Redirect.all, bool gui = false)
+{
+    File stdinFile, stdoutFile, stderrFile;
+
+    ProcessPipes pipes;
+    pipes._redirectFlags = redirectFlags;
+
+    if (redirectFlags & Redirect.stdin)
+    {
+        auto p = Pipe.create();
+        stdinFile = p.readEnd;
+        pipes._stdin = p.writeEnd;
+    }
+    else
+    {
+        stdinFile = std.stdio.stdin;
+    }
+
+    if (redirectFlags & Redirect.stdout)
+    {
+        enforce((redirectFlags & Redirect.stdoutToStderr) == 0,
+            "Invalid combination of options: Redirect.stdout | "
+           ~"Redirect.stdoutToStderr");
+        auto p = Pipe.create();
+        stdoutFile = p.writeEnd;
+        pipes._stdout = p.readEnd;
+    }
+    else
+    {
+        stdoutFile = std.stdio.stdout;
+    }
+
+    if (redirectFlags & Redirect.stderr)
+    {
+        enforce((redirectFlags & Redirect.stderrToStdout) == 0,
+            "Invalid combination of options: Redirect.stderr | "
+           ~"Redirect.stderrToStdout");
+        auto p = Pipe.create();
+        stderrFile = p.writeEnd;
+        pipes._stderr = p.readEnd;
+    }
+    else
+    {
+        stderrFile = std.stdio.stderr;
+    }
+
+    if (redirectFlags & Redirect.stdoutToStderr)
+    {
+        if (redirectFlags & Redirect.stderrToStdout)
+        {
+            // We know that neither of the other options have been
+            // set, so we assign the std.stdio.std* streams directly.
+            stdoutFile = std.stdio.stderr;
+            stderrFile = std.stdio.stdout;
+        }
+        else
+        {
+            stdoutFile = stderrFile;
+        }
+    }
+    else if (redirectFlags & Redirect.stderrToStdout)
+    {
+        stderrFile = stdoutFile;
+    }
+
+    pipes._pid = spawnProcess(name, args, stdinFile, stdoutFile,
+        stderrFile, CloseStreams.all, gui);
+
+    return pipes;
+}
+
+
+
+
+/** Same as the above, but invoke the shell to execute the given program
+    or command.
+*/
+ProcessPipes pipeShell(string command,
+    Redirect redirectFlags = Redirect.all, bool gui=false)
+{
+    return pipeProcess(getShell(), [shellSwitch, command], redirectFlags, gui);
+}
+
+
+
+
+/** Options to determine which of the child process' standard streams
+    are redirected.
+*/
+enum Redirect
+{
+    none = 0,
+
+    /** Redirect the standard input, output or error streams, respectively. */
+    stdin = 1,
+    stdout = 2,                             /// ditto
+    stderr = 4,                             /// ditto
+    all = stdin | stdout | stderr,          /// ditto
+
+    /** Redirect the standard error stream into the standard output
+        stream, and vice versa.
+    */
+    stderrToStdout = 8, 
+    stdoutToStderr = 16,                    /// ditto
+}
+
+
+
+
+/** Object containing File handles that allow communication with
+    a child process through its standard streams.
+*/
+struct ProcessPipes
+{
+private:
+    Redirect _redirectFlags;
+    Pid _pid;
+    File _stdin, _stdout, _stderr;
+
+public:
+    /** Return the Pid of the child process. */
+    @property Pid pid() { return _pid; }
+
+
+    /** Return a File that allows writing to the child process'
+        standard input stream.
+    */
+    @property File stdin()
+    {
+        enforce ((_redirectFlags & Redirect.stdin) > 0,
+            "Child process' standard input stream hasn't been redirected.");
+        return _stdin;
+    }
+
+
+    /** Return a File that allows reading from the child process'
+        standard output/error stream.
+    */
+    @property File stdout()
+    {
+        enforce ((_redirectFlags & Redirect.stdout) > 0,
+            "Child process' standard output stream hasn't been redirected.");
+        return _stdout;
+    }
+    
+    /// ditto
+    @property File stderr()
+    {
+        enforce ((_redirectFlags & Redirect.stderr) > 0,
+            "Child process' standard error stream hasn't been redirected.");
+        return _stderr;
+    }
+}
+
+
+
+
+/** Execute the given program.
+    This function blocks until the program returns, and returns
+    its exit code.
+    The program's output can be stored in a string and returned
+    through the optional output argument.
+*/
+int execute(string command)
+{
+    return spawnProcess(command).wait();
+}
+
+
+/// ditto
+int execute(string command, out string output)
+{
+    auto p = Pipe.create();
+    auto pid = spawnProcess(command, std.stdio.stdin, p.writeEnd);
+
+    Appender!string a;
+    foreach (line; p.readEnd.byLine(File.KeepTerminator.yes))  a.put(line);
+    output = a.data;
+    return pid.wait();
+}
+
+
+/// ditto
+int execute(string name, string[] args)
+{
+    return spawnProcess(name, args).wait();
+}
+
+
+/// ditto
+int execute(string name, string[] args, out string output)
+{
+    auto p = Pipe.create();
+    auto pid = spawnProcess(name, args, std.stdio.stdin, p.writeEnd);
+
+    Appender!string a;
+    foreach (line; p.readEnd.byLine(File.KeepTerminator.yes))  a.put(line);
+    output = a.data;
+    return pid.wait();
+}
+
+
+
+
 /** Execute the given command in the user's default shell (or
     '/bin/sh' if the default shell can't be determined).
     This function blocks until the command returns, and returns
@@ -491,32 +781,29 @@ unittest
     shell("ls -l", myFiles);
     ---
 */
-version(Posix)  int shell(string cmd)
+int shell(string command)
 {
-    string[2] args = ["-c", cmd];
-    return spawnProcess(getShell(), ["-c", cmd]).wait();
+    return spawnProcess(getShell(), [shellSwitch, command]).wait();
 }
 
 
 /// ditto
-version(Posix)  int shell(string cmd, out string output)
+int shell(string command, out string output)
 {
-    string[2] args = ["-c", cmd];
-    auto p = Pipe.create();
-    auto pid = spawnProcess(getShell, ["-c", cmd], std.stdio.stdin, p.writeEnd);
-    
-    Appender!string a;
-    foreach (line; p.readEnd.byLine(File.KeepTerminator.yes))  a.put(line);
-    output = a.data;
-    return pid.wait();
+    return execute(getShell(), [shellSwitch, command], output);
 }
 
 
-// Get the user's default shell, defaulting to /bin/sh.
+// Get the user's default shell.
 version(Posix)  private string getShell()
 {
     auto shellPathz = getEnv("SHELL");
-    if (shellPathz == null)
-        return "/bin/sh";
+    if (shellPathz == null)  return "/bin/sh";
     return to!string(shellPathz);
 }
+
+version(Windows) private string getShell()
+{
+    return "cmd.exe";
+}
+
