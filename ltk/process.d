@@ -55,6 +55,10 @@ version(Posix)
     import core.sys.posix.unistd;
     import core.sys.posix.sys.wait;
 }
+version(Windows)
+{
+    import core.sys.windows.windows;
+}
 
 import std.algorithm;
 import std.array;
@@ -325,12 +329,10 @@ version(Posix) private Pid spawnProcessImpl
 // (checking that it is in fact executable).
 version(Posix) private string searchPathFor(string executable)
 {
-    enum char pathListSeparator = ':';
-
     auto pathz = getEnv("PATH");
     if (pathz == null)  return null;
 
-    foreach (dir; splitter(to!string(pathz), pathListSeparator))
+    foreach (dir; splitter(to!string(pathz), pathsep))
     {
         auto execPath = join(dir, executable);
         if (isExecutable(execPath))  return execPath;
@@ -807,3 +809,16 @@ version(Windows) private string getShell()
     return "cmd.exe";
 }
 
+
+
+
+/** Get the process ID number of the current process. */
+version(Posix) @property int thisProcessID()
+{
+    return getpid();
+}
+
+version(Windows) @property int thisProcessID()
+{
+    return GetCurrentProcessId();
+}
