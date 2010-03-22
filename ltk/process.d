@@ -332,7 +332,7 @@ version(Posix) private string searchPathFor(string executable)
     auto pathz = getEnv("PATH");
     if (pathz == null)  return null;
 
-    foreach (dir; splitter(to!string(pathz), pathsep))
+    foreach (dir; splitter(to!string(pathz), ':'))
     {
         auto execPath = join(dir, executable);
         if (isExecutable(execPath))  return execPath;
