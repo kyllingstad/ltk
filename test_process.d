@@ -123,6 +123,25 @@ void main()
     ok();
 
 
+    // Test 7: Test execute().
+    compile(q{
+        import std.stdio;
+        int main(string[] args)
+        {
+            stdout.write("hello world");
+            return args.length;
+        }
+    });
+    string out7;
+    int stat7 = execute(exe~" foo", out7);
+    assert (stat7 == 2);
+    assert (out7 == "hello world");
+    stat7 = execute(exe, ["foo", "bar"], out7);
+    assert (stat7 == 3);
+    assert (out7 == "hello world");
+    ok();
+
+
 version (Posix)
 {
     // POSIX test 1: Terminate by signal.

@@ -742,9 +742,9 @@ int execute(string command, out string output)
     auto p = Pipe.create();
     auto pid = spawnProcess(command, std.stdio.stdin, p.writeEnd);
 
-    Appender!string a;
-    foreach (line; p.readEnd.byLine(File.KeepTerminator.yes))  a.put(line);
-    output = a.data;
+    Appender!(ubyte[]) a;
+    foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
+    output = cast(string) a.data;
     return pid.wait();
 }
 
@@ -762,9 +762,9 @@ int execute(string name, string[] args, out string output)
     auto p = Pipe.create();
     auto pid = spawnProcess(name, args, std.stdio.stdin, p.writeEnd);
 
-    Appender!string a;
-    foreach (line; p.readEnd.byLine(File.KeepTerminator.yes))  a.put(line);
-    output = a.data;
+    Appender!(ubyte[]) a;
+    foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
+    output = cast(string) a.data;
     return pid.wait();
 }
 
