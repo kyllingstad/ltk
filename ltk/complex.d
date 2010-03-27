@@ -108,8 +108,8 @@ struct Complex(T, R = real)
     // OpAssign operators:  Complex op= Complex
     Complex opOpAssign(string op)(Complex x)  if (op == "+=" || op == "-=")
     {
-        mixin("re "~op~" x.re;");
-        mixin("im "~op~" x.im;");
+        mixin ("re "~op~" x.re;");
+        mixin ("im "~op~" x.im;");
         return this;
     }
 
