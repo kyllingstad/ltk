@@ -161,21 +161,9 @@ struct Complex(T)  if (isFloatingPoint!T)
     Complex opOpAssign(string op, C)(C z)
         if (op == "*=" && is(C R == Complex!R))
     {
-    version (MultiplicationIsSlow)
-    {
-        FPTemporary!T ac = re*z.re;
-        FPTemporary!T bd = im*z.im;
-
-        auto temp = ac - bd;
-        im = (re + im)*(z.re + z.im) - ac - bd;
-        re = temp;
-    }
-    else
-    {
         auto temp = re*z.re - im*z.im;
         im = im*z.re + re*z.im;
         re = temp;
-    }
         return this;
     }
 
@@ -297,7 +285,7 @@ unittest
     assert (approxEqual(c1.arg, PI_4, EPS));
 
 
-    // Check unary operators.
+    // Check unary operations.
     auto c2 = Complex!double(0.5, 2.0);
 
     assert (c2 == +c2);
@@ -327,7 +315,6 @@ unittest
     auto cec = c1^^c2;
     assert (approxEqual(cec.re, 0.11524131979943839881, EPS));
     assert (approxEqual(cec.im, 0.21870790452746026696, EPS));
-
 
 
     // Check complex-real operations.
