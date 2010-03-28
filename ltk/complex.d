@@ -9,6 +9,8 @@ module ltk.complex;
 
 import std.conv;
 import std.math;
+import std.numeric;
+import std.traits;
 
 version(unittest) import std.stdio;
 
@@ -16,13 +18,8 @@ version(unittest) import std.stdio;
 
 
 /** Struct representing a complex number parametrised by a type T
-    
-    Note that results of intermediate calculations are stored in
-    variables of type R, which by default is real.  In some cases
-    performance can be increased by using double instead, but
-    this is at the cost of precision.
 */
-struct Complex(T, R = real)
+struct Complex(T)
 {
     /** The real part of the number. */
     T re;
@@ -33,15 +30,19 @@ struct Complex(T, R = real)
 
 
 
-    /** Calculate the modulus (or absolute value) of the number. */
-    @property T mod()
+    /** Calculate the absolute value (or modulus) of the number. */
+    @property T abs()
     {
-        T absRe = abs(re);
-        T absIm = abs(im);
+        auto absRe = fabs(re);
+        auto absIm = fabs(im);
         if (absRe < absIm)
             return absIm * sqrt(1 + (re/im)^^2);
         else
             return absRe * sqrt(1 + (im/re)^^2);
+
+        // TODO: Will use std.math.hypot() later, but currently it
+        // returns inf if either argument is zero.
+        // return hypot(re, im);
     }
 
     /** Calculate the argument (or phase) of the number. */
@@ -65,10 +66,16 @@ struct Complex(T, R = real)
 
 
     // Binary operators
-    Complex opBinary(string op, U)(U y)
+    Complex opBinary(string op, U)(U x)
     {
-        Complex x = this;
-        return x.opOpAssign!(op~"=")(y);
+        Complex w = this;
+        return w.opOpAssign!(op~"=")(x);
+    }
+
+
+    Complex opBinaryRight(string op, U : T)(U a)  if (op == "+" || op == "*")
+    {
+        return opBinary!(op, U)(a);
     }
 
     
@@ -82,82 +89,96 @@ struct Complex(T, R = real)
     Complex opBinaryRight(string op, U : T)(U a)  if (op == "/")
     {
         // a / this
-        Complex x;
+        Complex w;
 
-        if (abs(re) < abs(im))
+        if (fabs(re) < fabs(im))
         {
-            R ratio = re/im;
-            R adivd = a/(re*ratio + im);
+            FPTemporary!T ratio = re/im;
+            FPTemporary!T adivd = a/(re*ratio + im);
 
-            x.re = adivd*ratio;
-            x.im = -adivd;
+            w.re = adivd*ratio;
+            w.im = -adivd;
         }
         else
         {
-            R ratio = im/re;
-            R adivd = a/(re + im*ratio);
+            FPTemporary!T ratio = im/re;
+            FPTemporary!T adivd = a/(re + im*ratio);
 
-            x.re = adivd;
-            x.im = -adivd*ratio;
+            w.re = adivd;
+            w.im = -adivd*ratio;
         }
 
-        return x;
+        return w;
     }
 
 
     // OpAssign operators:  Complex op= Complex
-    Complex opOpAssign(string op)(Complex x)  if (op == "+=" || op == "-=")
+    Complex opOpAssign(string op)(Complex z)  if (op == "+=" || op == "-=")
     {
-        mixin ("re "~op~" x.re;");
-        mixin ("im "~op~" x.im;");
+        mixin ("re "~op~" z.re;");
+        mixin ("im "~op~" z.im;");
         return this;
     }
 
 
-    Complex opOpAssign(string op)(Complex x)  if (op == "*=")
+    Complex opOpAssign(string op)(Complex z)  if (op == "*=")
     {
     version (MultiplicationIsSlow)
     {
-        R ac = re*x.re;
-        R bd = im*x.im;
-        T temp = ac - bd;
-        im = (re + im)*(x.re + x.im) - ac - bd;
+        FPTemporary!T ac = re*z.re;
+        FPTemporary!T bd = im*z.im;
+
+        auto temp = ac - bd;
+        im = (re + im)*(z.re + z.im) - ac - bd;
         re = temp;
     }
     else
     {
-        T temp = re*x.re - im*x.im;
-        im = im*x.re + re*x.im;
+        auto temp = re*z.re - im*z.im;
+        im = im*z.re + re*z.im;
         re = temp;
     }
         return this;
     }
 
 
-    Complex opOpAssign(string op)(Complex x)  if (op == "/=")
+    Complex opOpAssign(string op)(Complex z)  if (op == "/=")
     {
-        if (abs(x.re) < abs(x.im))
+        if (fabs(z.re) < fabs(z.im))
         {
-            R ratio = x.re/x.im;
-            R denom = x.re*ratio + x.im;
+            FPTemporary!T ratio = z.re/z.im;
+            FPTemporary!T denom = z.re*ratio + z.im;
 
-            T temp  = (re*ratio + im)/denom;
-            im      = (im*ratio - re)/denom;
-            re      = temp;
+            auto temp = (re*ratio + im)/denom;
+            im = (im*ratio - re)/denom;
+            re = temp;
         }
         else
         {
-            R ratio = x.im/x.re;
-            R denom = x.re + x.im*ratio;
+            FPTemporary!T ratio = z.im/z.re;
+            FPTemporary!T denom = z.re + z.im*ratio;
 
-            T temp  = (re + im*ratio)/denom;
-            im      = (im - re*ratio)/denom;
-            re      = temp;
+            auto temp = (re + im*ratio)/denom;
+            im = (im - re*ratio)/denom;
+            re = temp;
         }
         return this;
     }
 
 
+    Complex opOpAssign(string op)(Complex z)  if (op == "^^=")
+    {
+        FPTemporary!T r = abs;
+        FPTemporary!T t = arg;
+        FPTemporary!T ab = r^^z.re * exp(-t*z.im);
+        FPTemporary!T ar = t*z.re + log(r)*z.im;
+        re = ab*cos(ar);
+        im = ab*sin(ar);
+        return this;
+    }
+
+
+    // OpAssign operators:  Complex op= real
     Complex opOpAssign(string op, U : T)(U a)  if (op == "+=" || op == "-=")
     {
         mixin ("re "~op~" a;");
@@ -173,6 +194,43 @@ struct Complex(T, R = real)
     }
 
 
+    Complex opOpAssign(string op, U : T)(U a)  if (op == "^^=")
+    {
+        FPTemporary!T mo = abs^^a;
+        FPTemporary!T ar = arg*a;
+        re = mo*cos(ar);
+        im = mo*sin(ar);
+        return this;
+    }
+
+
+    Complex opOpAssign(string op, U)(U i)  if (op == "^^=" && isIntegral!U)
+    {
+        if (i == 0)
+        {
+            re = 1.0;
+            im = 0.0;
+        }
+        else if (i == 1) { }
+        else if (i == 2)
+        {
+            this *= this;
+        }
+        else if (i == 3)
+        {
+            auto z = this;
+            this *= z;
+            this *= z;
+        }
+        else
+        {
+            this ^^= cast(real) i;
+        }
+        return this;
+    }
+
+
+
     // Just for debugging.  TODO: Improve later.
     string toString()
     {
@@ -185,9 +243,9 @@ unittest
 {
     enum EPS = double.epsilon;
 
-    // Check mod() and arg()
+    // Check abs() and arg()
     auto c1 = Complex!double(1.0, 1.0);
-    assert (approxEqual(c1.mod, sqrt(2.0), EPS));
+    assert (approxEqual(c1.abs, sqrt(2.0), EPS));
     assert (approxEqual(c1.arg, PI_4, EPS));
 
 
@@ -201,48 +259,74 @@ unittest
     assert (c2 == -(-c2));
 
 
-    // Check Complex-Complex operations.
-    auto c3 = c1 + c2;
-    assert (c3.re == c1.re + c2.re);
-    assert (c3.im == c1.im + c2.im);
+    // Check complex-complex operations.
+    auto cpc = c1 + c2;
+    assert (cpc.re == c1.re + c2.re);
+    assert (cpc.im == c1.im + c2.im);
 
-    auto c4 = c1 - c2;
-    assert (c4.re == c1.re - c2.re);
-    assert (c4.im == c1.im - c2.im);
+    auto cmc = c1 - c2;
+    assert (cmc.re == c1.re - c2.re);
+    assert (cmc.im == c1.im - c2.im);
 
-    auto c5 = c1 * c2;
-    assert (approxEqual(c5.mod, c1.mod*c2.mod, EPS));
-    assert (approxEqual(c5.arg, c1.arg+c2.arg, EPS));
+    auto ctc = c1 * c2;
+    assert (approxEqual(ctc.abs, c1.abs*c2.abs, EPS));
+    assert (approxEqual(ctc.arg, c1.arg+c2.arg, EPS));
 
-    auto c6 = c1 / c2;
-    assert (approxEqual(c6.mod, c1.mod/c2.mod, EPS));
-    assert (approxEqual(c6.arg, c1.arg-c2.arg, EPS));
+    auto cdc = c1 / c2;
+    assert (approxEqual(cdc.abs, c1.abs/c2.abs, EPS));
+    assert (approxEqual(cdc.arg, c1.arg-c2.arg, EPS));
+
+    auto cec = c1^^c2;
+    assert (approxEqual(cec.re, 0.11524131979943839881, EPS));
+    assert (approxEqual(cec.im, 0.21870790452746026696, EPS));
 
 
-    // Check Complex-float operations.
+
+    // Check complex-real operations.
     double a = 123.456;
 
-    auto c7 = c1 + a;
-    assert (c7.re == c1.re + a);
-    assert (c7.im == c1.im);
+    auto cpr = c1 + a;
+    assert (cpr.re == c1.re + a);
+    assert (cpr.im == c1.im);
 
-    auto c8 = c1 - a;
-    assert (c8.re == c1.re - a);
-    assert (c8.im == c1.im);
+    auto cmr = c1 - a;
+    assert (cmr.re == c1.re - a);
+    assert (cmr.im == c1.im);
 
-    auto c9 = c1 * a;
-    assert (c9.re == c1.re*a);
-    assert (c9.im == c1.im*a);
+    auto ctr = c1 * a;
+    assert (ctr.re == c1.re*a);
+    assert (ctr.im == c1.im*a);
 
-    auto c10 = c1 / a;
-    assert (approxEqual(c10.mod, c1.mod/a, EPS));
-    assert (approxEqual(c10.arg, c1.arg, EPS));
+    auto cdr = c1 / a;
+    assert (approxEqual(cdr.abs, c1.abs/a, EPS));
+    assert (approxEqual(cdr.arg, c1.arg, EPS));
 
-    auto c11 = a - c1;
-    assert (c11.re == a-c1.re);
-    assert (c11.im == -c1.im);
+    auto rpc = a + c1;
+    assert (rpc == cpr);
 
-    auto c12 = a / c1;
-    assert (approxEqual(c12.mod, a/c1.mod, EPS));
-    assert (approxEqual(c12.arg, -c1.arg, EPS));
+    auto rmc = a - c1;
+    assert (rmc.re == a-c1.re);
+    assert (rmc.im == -c1.im);
+
+    auto rtc = a * c1;
+    assert (rtc == ctr);
+
+    auto rdc = a / c1;
+    assert (approxEqual(rdc.abs, a/c1.abs, EPS));
+    assert (approxEqual(rdc.arg, -c1.arg, EPS));
+
+    auto cer = c1^^3.0;
+    assert (approxEqual(cer.abs, c1.abs^^3, EPS));
+    assert (approxEqual(cer.arg, c1.arg*3, EPS));
+
+
+    // Check Complex-int operations.
+    foreach (i; 0..6)
+    {
+        auto cei = c1^^i;
+        assert (approxEqual(cei.abs, c1.abs^^i, EPS));
+        // Use cos() here to deal with arguments that go outside
+        // the (-pi,pi] interval (only an issue for i>3).
+        assert (approxEqual(cos(cei.arg), cos(c1.arg*i), EPS));
+    }
 }
