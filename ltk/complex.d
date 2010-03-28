@@ -75,7 +75,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     Complex!(CommonType!(T,R)) opBinary(string op, R)(Complex!R z)
     {
         alias typeof(return) C;
-        C w = C(this.re, this.im);
+        auto w = C(this.re, this.im);
         return w.opOpAssign!(op~"=")(z);
     }
 
@@ -85,7 +85,7 @@ struct Complex(T)  if (isFloatingPoint!T)
         if (isFloatingPoint!R)
     {
         alias typeof(return) C;
-        C w = C(this.re, this.im);
+        auto w = C(this.re, this.im);
         return w.opOpAssign!(op~"=")(r);
     }
 
@@ -94,7 +94,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     Complex opBinary(string op, I)(I i)
         if (isIntegral!I)
     {
-        Complex w = this;
+        auto w = this;
         return w.opOpAssign!(op~"=")(i);
     }
 
@@ -214,6 +214,7 @@ struct Complex(T)  if (isFloatingPoint!T)
         FPTemporary!T t = arg;
         FPTemporary!T ab = r^^z.re * exp(-t*z.im);
         FPTemporary!T ar = t*z.re + log(r)*z.im;
+
         re = ab*cos(ar);
         im = ab*sin(ar);
         return this;
@@ -241,10 +242,10 @@ struct Complex(T)  if (isFloatingPoint!T)
     Complex opOpAssign(string op, R)(R r)
         if (op == "^^=" && isFloatingPoint!R)
     {
-        FPTemporary!T mo = abs^^r;
+        FPTemporary!T ab = abs^^r;
         FPTemporary!T ar = arg*r;
-        re = mo*cos(ar);
-        im = mo*sin(ar);
+        re = ab*cos(ar);
+        im = ab*sin(ar);
         return this;
     }
 
