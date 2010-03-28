@@ -19,7 +19,7 @@ version(unittest) import std.stdio;
 
 /** Struct representing a complex number parametrised by a type T
 */
-struct Complex(T)
+struct Complex(T)  if (isFloatingPoint!T)
 {
     /** The real part of the number. */
     T re;
@@ -54,9 +54,14 @@ struct Complex(T)
 
 
 
-    // Unary operators
+    // UNARY OPERATORS
+
+
+    // +complex
     Complex opUnary(string op)()  if (op == "+")  { return this; }
 
+
+    // -complex
     Complex opUnary(string op)()  if (op == "-")
     {
         return Complex(-re, -im);
@@ -64,56 +69,84 @@ struct Complex(T)
 
 
 
+    // BINARY OPERATORS
 
-    // Binary operators
-    Complex opBinary(string op, U)(U x)
+
+    // complex op complex
+    Complex!(CommonType!(T,R)) opBinary(string op, R)(Complex!R z)
+    {
+        alias typeof(return) C;
+        C w = C(this.re, this.im);
+        return w.opOpAssign!(op~"=")(z);
+    }
+
+
+    // complex op real
+    Complex!(CommonType!(T,R)) opBinary(string op, R)(R r)
+        if (isFloatingPoint!R)
+    {
+        alias typeof(return) C;
+        C w = C(this.re, this.im);
+        return w.opOpAssign!(op~"=")(r);
+    }
+
+
+    // complex op int
+    Complex opBinary(string op, I)(I i)
+        if (isIntegral!I)
     {
         Complex w = this;
-        return w.opOpAssign!(op~"=")(x);
+        return w.opOpAssign!(op~"=")(i);
     }
 
 
-    Complex opBinaryRight(string op, U : T)(U a)  if (op == "+" || op == "*")
+    // real op complex
+    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
+        if ((op == "+" || op == "*") && isFloatingPoint!R)
     {
-        return opBinary!(op, U)(a);
+        return opBinary!(op)(r);
     }
 
-    
-    Complex opBinaryRight(string op, U : T)(U a)  if (op == "-")
+    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
+        if (op == "-" && isFloatingPoint!R)
     {
-        // a - this
-        return Complex(a - re, -im);
+        return Complex(r - re, -im);
     }
 
-
-    Complex opBinaryRight(string op, U : T)(U a)  if (op == "/")
+    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
+        if (op == "/" && isFloatingPoint!R)
     {
-        // a / this
-        Complex w;
+        typeof(return) w;
+        alias FPTemporary!(typeof(w.re)) Tmp;
 
         if (fabs(re) < fabs(im))
         {
-            FPTemporary!T ratio = re/im;
-            FPTemporary!T adivd = a/(re*ratio + im);
+            Tmp ratio = re/im;
+            Tmp rdivd = r/(re*ratio + im);
 
-            w.re = adivd*ratio;
-            w.im = -adivd;
+            w.re = rdivd*ratio;
+            w.im = -rdivd;
         }
         else
         {
-            FPTemporary!T ratio = im/re;
-            FPTemporary!T adivd = a/(re + im*ratio);
+            Tmp ratio = im/re;
+            Tmp rdivd = r/(re + im*ratio);
 
-            w.re = adivd;
-            w.im = -adivd*ratio;
+            w.re = rdivd;
+            w.im = -rdivd*ratio;
         }
 
         return w;
     }
 
 
-    // OpAssign operators:  Complex op= Complex
-    Complex opOpAssign(string op)(Complex z)  if (op == "+=" || op == "-=")
+
+    // OPASSIGN OPERATORS
+
+
+    // complex op= complex
+    Complex opOpAssign(string op, C)(C z)
+        if ((op == "+=" || op == "-=") && is(C R == Complex!R))
     {
         mixin ("re "~op~" z.re;");
         mixin ("im "~op~" z.im;");
@@ -121,7 +154,8 @@ struct Complex(T)
     }
 
 
-    Complex opOpAssign(string op)(Complex z)  if (op == "*=")
+    Complex opOpAssign(string op, C)(C z)
+        if (op == "*=" && is(C R == Complex!R))
     {
     version (MultiplicationIsSlow)
     {
@@ -142,7 +176,8 @@ struct Complex(T)
     }
 
 
-    Complex opOpAssign(string op)(Complex z)  if (op == "/=")
+    Complex opOpAssign(string op, C)(C z)
+        if (op == "/=" && is(C R == Complex!R))
     {
         if (fabs(z.re) < fabs(z.im))
         {
@@ -166,7 +201,8 @@ struct Complex(T)
     }
 
 
-    Complex opOpAssign(string op)(Complex z)  if (op == "^^=")
+    Complex opOpAssign(string op, C)(C z)
+        if (op == "^^=" && is(C R == Complex!R))
     {
         FPTemporary!T r = abs;
         FPTemporary!T t = arg;
@@ -178,7 +214,7 @@ struct Complex(T)
     }
 
 
-    // OpAssign operators:  Complex op= real
+    // complex op= real
     Complex opOpAssign(string op, U : T)(U a)  if (op == "+=" || op == "-=")
     {
         mixin ("re "~op~" a;");
@@ -194,7 +230,8 @@ struct Complex(T)
     }
 
 
-    Complex opOpAssign(string op, U : T)(U a)  if (op == "^^=")
+    Complex opOpAssign(string op, U : T)(U a)
+        if (op == "^^=" && isFloatingPoint!U)
     {
         FPTemporary!T mo = abs^^a;
         FPTemporary!T ar = arg*a;
@@ -204,7 +241,9 @@ struct Complex(T)
     }
 
 
-    Complex opOpAssign(string op, U)(U i)  if (op == "^^=" && isIntegral!U)
+    // complex ^^= int
+    Complex opOpAssign(string op, U)(U i)
+        if (op == "^^=" && isIntegral!U)
     {
         if (i == 0)
         {
@@ -329,4 +368,13 @@ unittest
         // the (-pi,pi] interval (only an issue for i>3).
         assert (approxEqual(cos(cei.arg), cos(c1.arg*i), EPS));
     }
+
+
+    // Check operations between different complex types.
+    auto cf = Complex!float(1.0, 1.0);
+    auto cr = Complex!real(1.0, 1.0);
+    auto c1pcf = c1 + cf;
+    auto c1pcr = c1 + cr;
+    assert (c1pcf.re == c1pcr.re);
+    assert (c1pcf.im == c1pcr.im);
 }
