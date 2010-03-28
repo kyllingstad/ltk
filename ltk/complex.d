@@ -33,24 +33,23 @@ struct Complex(T)  if (isFloatingPoint!T)
     /** Calculate the absolute value (or modulus) of the number. */
     @property T abs()
     {
+        // TODO: Will use std.math.hypot() when D bug 4023 is fixed.
+        // return hypot(re, im);
+
         auto absRe = fabs(re);
         auto absIm = fabs(im);
         if (absRe < absIm)
             return absIm * sqrt(1 + (re/im)^^2);
         else
             return absRe * sqrt(1 + (im/re)^^2);
-
-        // TODO: Will use std.math.hypot() later, but currently it
-        // returns inf if either argument is zero.
-        // return hypot(re, im);
     }
+
 
     /** Calculate the argument (or phase) of the number. */
     @property T arg()
     {
         return atan2(im, re);
     }
-
 
 
 
@@ -100,19 +99,23 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
-    // real op complex
+    // real + complex,  real * complex
     Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
         if ((op == "+" || op == "*") && isFloatingPoint!R)
     {
         return opBinary!(op)(r);
     }
 
+
+    // real - complex
     Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
         if (op == "-" && isFloatingPoint!R)
     {
         return Complex(r - re, -im);
     }
 
+
+    // real / complex
     Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
         if (op == "/" && isFloatingPoint!R)
     {
@@ -144,7 +147,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     // OPASSIGN OPERATORS
 
 
-    // complex op= complex
+    // complex += complex,  complex -= complex
     Complex opOpAssign(string op, C)(C z)
         if ((op == "+=" || op == "-=") && is(C R == Complex!R))
     {
@@ -154,6 +157,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
+    // complex *= complex
     Complex opOpAssign(string op, C)(C z)
         if (op == "*=" && is(C R == Complex!R))
     {
@@ -176,6 +180,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
+    // complex /= complex
     Complex opOpAssign(string op, C)(C z)
         if (op == "/=" && is(C R == Complex!R))
     {
@@ -201,6 +206,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
+    // complex ^^= complex
     Complex opOpAssign(string op, C)(C z)
         if (op == "^^=" && is(C R == Complex!R))
     {
@@ -214,7 +220,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
-    // complex op= real
+    // complex += numeric,  complex -= numeric
     Complex opOpAssign(string op, U : T)(U a)  if (op == "+=" || op == "-=")
     {
         mixin ("re "~op~" a;");
@@ -222,6 +228,7 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
+    // complex *= numeric,  complex /= numeric
     Complex opOpAssign(string op, U : T)(U a)  if (op == "*=" || op == "/=")
     {
         mixin ("re "~op~" a;");
@@ -230,11 +237,12 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
-    Complex opOpAssign(string op, U : T)(U a)
-        if (op == "^^=" && isFloatingPoint!U)
+    // complex ^^= real
+    Complex opOpAssign(string op, R)(R r)
+        if (op == "^^=" && isFloatingPoint!R)
     {
-        FPTemporary!T mo = abs^^a;
-        FPTemporary!T ar = arg*a;
+        FPTemporary!T mo = abs^^r;
+        FPTemporary!T ar = arg*r;
         re = mo*cos(ar);
         im = mo*sin(ar);
         return this;
@@ -245,24 +253,24 @@ struct Complex(T)  if (isFloatingPoint!T)
     Complex opOpAssign(string op, U)(U i)
         if (op == "^^=" && isIntegral!U)
     {
-        if (i == 0)
+        switch (i)
         {
+        case 0:
             re = 1.0;
             im = 0.0;
-        }
-        else if (i == 1) { }
-        else if (i == 2)
-        {
+            break;
+        case 1:
+            // identity; do nothing
+            break;
+        case 2:
             this *= this;
-        }
-        else if (i == 3)
-        {
+            break;
+        case 3:
             auto z = this;
             this *= z;
             this *= z;
-        }
-        else
-        {
+            break;
+        default:
             this ^^= cast(real) i;
         }
         return this;
@@ -375,6 +383,8 @@ unittest
     auto cr = Complex!real(1.0, 1.0);
     auto c1pcf = c1 + cf;
     auto c1pcr = c1 + cr;
+    static assert (is(typeof(c1pcf) == Complex!double));
+    static assert (is(typeof(c1pcr) == Complex!real));
     assert (c1pcf.re == c1pcr.re);
     assert (c1pcf.im == c1pcr.im);
 }
