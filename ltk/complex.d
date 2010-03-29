@@ -53,6 +53,7 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
 
+
     // UNARY OPERATORS
 
 
@@ -375,4 +376,20 @@ unittest
     static assert (is(typeof(c1pcr) == Complex!real));
     assert (c1pcf.re == c1pcr.re);
     assert (c1pcf.im == c1pcr.im);
+}
+
+
+
+
+/** Construct a complex number given its absolute value and argument. */
+Complex!R fromPolar(R)(R modulus, R argument)
+{
+    return Complex!R(modulus*cos(argument), modulus*sin(argument));
+}
+
+unittest
+{
+    auto z = fromPolar(sqrt(2.0L), PI_4);
+    assert (approxEqual(z.re, 1.0L, real.epsilon));
+    assert (approxEqual(z.im, 1.0L, real.epsilon));
 }
