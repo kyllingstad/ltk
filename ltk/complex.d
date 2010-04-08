@@ -52,6 +52,13 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
+    /** Return the complex conjugate of the number. */
+    @property Complex conj()
+    {
+        return Complex(re, -im);
+    }
+
+
 
 
     // UNARY OPERATORS
@@ -285,6 +292,9 @@ unittest
     assert (approxEqual(c1.abs, sqrt(2.0), EPS));
     assert (approxEqual(c1.arg, PI_4, EPS));
 
+    auto c1c = c1.conj;
+    assert (c1c.re == 1.0 && c1c.im == -1.0);
+
 
     // Check unary operations.
     auto c2 = Complex!double(0.5, 2.0);
@@ -381,15 +391,54 @@ unittest
 
 
 
-/** Construct a complex number given its absolute value and argument. */
-Complex!R fromPolar(R)(R modulus, R argument)
+/*  Fold Complex!(Complex!T) to Complex!T.
+    
+    The rationale for this is that just like the real line is a
+    subspace of the complex plane, the complex plane is a subspace
+    of itself.  Example of usage:
+    ---
+    Complex!T addI(T)(T x)
+    {
+        return x + Complex!T(0.0, 1.0);
+    }
+    ---
+    The above will work if T is both real and complex.
+*/
+template Complex(T) if (is(T R == Complex!R))
 {
-    return Complex!R(modulus*cos(argument), modulus*sin(argument));
+    alias T Complex;
 }
 
 unittest
 {
-    auto z = fromPolar(sqrt(2.0L), PI_4);
+    static assert (is(Complex!(Complex!real) == Complex!real));
+
+    Complex!T addI(T)(T x)
+    {
+        return x + Complex!T(0.0, 1.0);
+    }
+
+    auto z1 = addI(1.0);
+    assert (z1.re == 1.0 && z1.im == 1.0);
+
+    enum one = Complex!double(1.0, 0.0);
+    auto z2 = addI(one);
+    assert (z1 == z2);
+}
+
+
+
+
+/** Construct a complex number given its absolute value and argument. */
+Complex!(CommonType!(T, U)) fromPolar(T, U)(T modulus, U argument)
+{
+    return Complex!(CommonType!(T,U))
+        (modulus*cos(argument), modulus*sin(argument));
+}
+
+unittest
+{
+    auto z = fromPolar(sqrt(2.0), PI_4);
     assert (approxEqual(z.re, 1.0L, real.epsilon));
     assert (approxEqual(z.im, 1.0L, real.epsilon));
 }
