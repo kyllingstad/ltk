@@ -7,12 +7,14 @@
 module ltk.complex;
 
 
-import std.conv;
 import std.math;
 import std.numeric;
 import std.traits;
 
-version(unittest) import std.stdio;
+// For toString():
+import std.array;
+import std.format;
+import std.range;
 
 
 
@@ -28,20 +30,10 @@ struct Complex(T)  if (isFloatingPoint!T)
     T im;
 
 
-
-
     /** Calculate the absolute value (or modulus) of the number. */
     @property T abs()
     {
-        // TODO: Will use std.math.hypot() when D bug 4023 is fixed.
-        // return hypot(re, im);
-
-        auto absRe = fabs(re);
-        auto absIm = fabs(im);
-        if (absRe < absIm)
-            return absIm * sqrt(1 + (re/im)^^2);
-        else
-            return absRe * sqrt(1 + (im/re)^^2);
+        return hypot(re, im);
     }
 
 
@@ -88,9 +80,9 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
-    // complex op real
+    // complex op numeric
     Complex!(CommonType!(T,R)) opBinary(string op, R)(R r)
-        if (isFloatingPoint!R)
+        if (isNumeric!R)
     {
         alias typeof(return) C;
         auto w = C(this.re, this.im);
@@ -98,34 +90,25 @@ struct Complex(T)  if (isFloatingPoint!T)
     }
 
 
-    // complex op int
-    Complex opBinary(string op, I)(I i)
-        if (isIntegral!I)
-    {
-        auto w = this;
-        return w.opOpAssign!(op~"=")(i);
-    }
-
-
-    // real + complex,  real * complex
+    // numeric + complex,  numeric * complex
     Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
-        if ((op == "+" || op == "*") && isFloatingPoint!R)
+        if ((op == "+" || op == "*") && (isNumeric!R))
     {
         return opBinary!(op)(r);
     }
 
 
-    // real - complex
+    // numeric - complex
     Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
-        if (op == "-" && isFloatingPoint!R)
+        if (op == "-" && isNumeric!R)
     {
         return Complex(r - re, -im);
     }
 
 
-    // real / complex
+    // numeric / complex
     Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
-        if (op == "/" && isFloatingPoint!R)
+        if (op == "/" && isNumeric!R)
     {
         typeof(return) w;
         alias FPTemporary!(typeof(w.re)) Tmp;
@@ -275,13 +258,56 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
 
-    // Just for debugging.  TODO: Improve later.
-    string toString()
+
+    /** Convert the complex number to a string representation, and pass it
+        to the output range writer.
+
+        The output format is controlled via formatSpec, which should consist
+        of a single POSIX format specifier, without the percent (%) character.
+        Note that complex numbers are floating point numbers, so the only
+        valid format characters are 'e', 'f', 'g', 'a', and 's', where 's'
+        gives the default behaviour.  See the std.format documentation for
+        more information.
+    */
+    void toString(Writer, String)(ref Writer writer, String formatSpec)
+        if (isOutputRange!(Writer, String))
     {
-        return to!string(re)~"+i"~to!string(im);
+        enum maxNoAlloc = 30;
+        if (formatSpec.length <= maxNoAlloc)
+        {
+            // Avoid allocating in most cases.
+            char[2*maxNoAlloc+4] fmt;
+            fmt[0] = '%';
+            int i = 1;
+            int j = 1 + formatSpec.length;
+            fmt[i .. j] = formatSpec[];
+            i = j;
+            if (signbit(im)==0)
+            {
+                fmt[i] = '+';
+                i++;
+            }
+            fmt[i++] = '%';
+            j = i + formatSpec.length;
+            fmt[i .. j] = formatSpec[];
+            fmt[j] = 'i';
+
+            formattedWrite(
+                writer,
+                fmt[0 .. j+1],
+                re, im);
+        }
+        else
+        {
+            // For unlikely long format specifiers.
+            auto pm = signbit(im)==0 ? "+" : "";
+            formattedWrite(
+                writer,
+                "%"~formatSpec~pm~"%"~formatSpec~"i",
+                re, im);
+        }
     }
 }
-
 
 unittest
 {
@@ -386,6 +412,21 @@ unittest
     static assert (is(typeof(c1pcr) == Complex!real));
     assert (c1pcf.re == c1pcr.re);
     assert (c1pcf.im == c1pcr.im);
+}
+
+
+unittest
+{
+    // Convert to string.
+    auto z1 = Complex!real(0.123456789, 0.123456789);
+    Appender!string s1;
+    z1.toString(s1, "s");
+    assert (s1.data == "0.123457+0.123457i");
+
+    auto z2 = z1.conj;
+    Appender!string s2;
+    z2.toString(s2, ".8e");
+    assert (s2.data == "1.23456789e-01-1.23456789e-01i");
 }
 
 
