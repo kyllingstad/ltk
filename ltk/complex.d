@@ -19,6 +19,8 @@ import std.range;
 
 
 
+// TODO: Make operators return by ref when DMD bug 2460 is fixed.
+
 /** A complex number parametrised by a type T. */
 struct Complex(T)  if (isFloatingPoint!T)
 {
@@ -30,21 +32,21 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     /** Calculate the absolute value (or modulus) of the number. */
-    @property T abs()
+    @property T abs() const
     {
         return hypot(re, im);
     }
 
 
     /** Calculate the argument (or phase) of the number. */
-    @property T arg()
+    @property T arg() const
     {
         return atan2(im, re);
     }
 
 
     /** Return the complex conjugate of the number. */
-    @property Complex conj()
+    @property Complex conj() const
     {
         return Complex(re, -im);
     }
@@ -79,14 +81,14 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // this == complex
-    bool opEquals(R : T)(Complex!R z)
+    bool opEquals(R : T)(Complex!R z) const
     {
         return re == z.re && im == z.im;
     }
 
 
     // this == numeric
-    bool opEquals(R : T)(R r)
+    bool opEquals(R : T)(R r) const
     {
         return re == r && im == 0;
     }
@@ -97,11 +99,16 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // +complex
-    Complex opUnary(string op)()  if (op == "+")  { return this; }
+    Complex opUnary(string op)() const
+        if (op == "+")
+    {
+        return this;
+    }
 
 
     // -complex
-    Complex opUnary(string op)()  if (op == "-")
+    Complex opUnary(string op)() const
+        if (op == "-")
     {
         return Complex(-re, -im);
     }
@@ -112,7 +119,7 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // complex op complex
-    Complex!(CommonType!(T,R)) opBinary(string op, R)(Complex!R z)
+    Complex!(CommonType!(T,R)) opBinary(string op, R)(Complex!R z) const
     {
         alias typeof(return) C;
         auto w = C(this.re, this.im);
@@ -121,7 +128,7 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // complex op numeric
-    Complex!(CommonType!(T,R)) opBinary(string op, R)(R r)
+    Complex!(CommonType!(T,R)) opBinary(string op, R)(R r) const
         if (isNumeric!R)
     {
         alias typeof(return) C;
@@ -131,7 +138,7 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // numeric + complex,  numeric * complex
-    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
+    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r) const
         if ((op == "+" || op == "*") && (isNumeric!R))
     {
         return opBinary!(op)(r);
@@ -139,7 +146,7 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // numeric - complex
-    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
+    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r) const
         if (op == "-" && isNumeric!R)
     {
         return Complex(r - re, -im);
@@ -147,7 +154,7 @@ struct Complex(T)  if (isFloatingPoint!T)
 
 
     // numeric / complex
-    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r)
+    Complex!(CommonType!(T, R)) opBinaryRight(string op, R)(R r) const
         if (op == "/" && isNumeric!R)
     {
         typeof(return) w;
@@ -309,7 +316,7 @@ struct Complex(T)  if (isFloatingPoint!T)
         gives the default behaviour.  See the std.format documentation for
         more information.
     */
-    void toString(Writer, String)(ref Writer writer, String formatSpec)
+    void toString(Writer, String)(ref Writer writer, String formatSpec) const
         if (isOutputRange!(Writer, String))
     {
         enum maxNoAlloc = 30;
