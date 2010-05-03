@@ -44,7 +44,7 @@ void main()
     compile(q{
         void main() { }
     });
-    assert (spawnProcess(exe).wait() == 0);
+    assert (wait(spawnProcess(exe)) == 0);
     ok();
 
 
@@ -52,7 +52,7 @@ void main()
     compile(q{
         int main() { return 123; }
     });
-    assert (spawnProcess(exe).wait() == 123);
+    assert (wait(spawnProcess(exe)) == 123);
     ok();
 
 
@@ -65,8 +65,8 @@ void main()
             return 1;
         }
     });
-    assert (spawnProcess(exe, ["hello", "world"]).wait() == 0);
-    assert (spawnProcess(exe~" hello world").wait() == 0);
+    assert (wait(spawnProcess(exe, ["hello", "world"])) == 0);
+    assert (wait(spawnProcess(exe~" hello world")) == 0);
     ok();
 
 
@@ -83,8 +83,8 @@ void main()
     });
     string[string] env;
     env["hello"] = "world";
-    assert (spawnProcess(exe, null, env).wait() == 0);
-    assert (spawnProcess(exe, env).wait() == 0);
+    assert (wait(spawnProcess(exe, null, env)) == 0);
+    assert (wait(spawnProcess(exe, env)) == 0);
     ok();
 
 
@@ -100,7 +100,7 @@ void main()
     auto pipe5 = Pipe.create();
     pid = spawnProcess(exe, pipe5.readEnd);
     pipe5.writeEnd.writeln("hello world");
-    assert (pid.wait() == 0);
+    assert (wait(pid) == 0);
     pipe5.close();
     ok();
 
@@ -119,7 +119,7 @@ void main()
     pid = spawnProcess(exe, stdin, pipe6o.writeEnd, pipe6e.writeEnd);
     assert (pipe6o.readEnd.readln().chomp() == "hello output");
     assert (pipe6e.readEnd.readln().chomp() == "hello error");
-    pid.wait();
+    wait(pid);
     ok();
 
 
@@ -142,6 +142,48 @@ void main()
     ok();
 
 
+    // Test 8: Test waitAny().
+    compile(q{
+        import core.thread, std.conv;
+        enum milliseconds = 10_000;
+        int main(string[] args)
+        {
+            int t = to!int(args[1]);
+            Thread.sleep(t*milliseconds);
+            return t;
+        }
+    });
+    auto pid8_1 = spawnProcess(exe, ["100"]);
+    auto pid8_2 = spawnProcess(exe, ["200"]);
+    auto stat8 = waitAny();
+    assert (stat8.any && stat8.status == 100 && stat8.pid == pid8_1);
+    stat8 = waitAny();
+    assert (stat8.any && stat8.status == 200 && stat8.pid == pid8_2);
+    stat8 = waitAny();
+    assert (!stat8.any);
+    ok();
+
+
+    // Test 9: Test waitAll().
+    compile(q{
+        import core.thread, std.conv;
+        enum milliseconds = 10_000;
+        int main(string[] args)
+        {
+            int t = to!int(args[1]);
+            Thread.sleep(t*milliseconds);
+            return t;
+        }
+    });
+    auto pid9_1 = spawnProcess(exe, ["100"]);
+    auto pid9_2 = spawnProcess(exe, ["200"]);
+    auto stat9 = waitAll();
+    assert (stat9[pid9_1] == 100);
+    assert (stat9[pid9_2] == 200);
+    assert (stat9.length == 2);
+    ok();
+
+
 version (Posix)
 {
     // POSIX test 1: Terminate by signal.
@@ -150,7 +192,7 @@ version (Posix)
     });
     pid = spawnProcess(exe);
     kill(pid.processID, SIGTERM);
-    assert (pid.wait() == -SIGTERM);
+    assert (wait(pid) == -SIGTERM);
     pok();
 
 
@@ -162,7 +204,7 @@ version (Posix)
     {
         if (line.indexOf("deleteme.d") >= 0)  found = true;
     }
-    assert (pid.wait() == 0);
+    assert (wait(pid) == 0);
     assert (found == true);
     pok();
 }

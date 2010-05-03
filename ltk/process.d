@@ -8,7 +8,7 @@
     In general, the parent process should always wait for all child processes
     to finish before it terminates.  Otherwise the child processes
     may become 'zombies', i.e. defunct processes that only take up slots
-    in the OS process table.  Use the Pid.wait() function to do this.
+    in the OS process table.  Use the wait*() functions to do this.
     (Tip:  Scope guards are a convenient way to do this.  See the
     spawnProcess() documentation below for examples.)
 
@@ -27,7 +27,7 @@
     ))
     The functions that have names containing "shell" run the given command
     through the user's default command interpreter.  On Windows, this is
-    the $(I cmd) program, on POSIX it is determined by the SHELL environment
+    the $(I cmd.exe) program, on POSIX it is determined by the SHELL environment
     variable (defaulting to '/bin/sh' if it cannot be determined).  The
     command is specified as a single string which is sent directly to the
     shell.
@@ -51,6 +51,7 @@ module ltk.process;
 
 version(Posix)
 {
+    import core.stdc.errno;
     import core.sys.posix.stdio;
     import core.sys.posix.unistd;
     import core.sys.posix.sys.wait;
@@ -67,6 +68,7 @@ import std.conv;
 import std.path;
 import std.stdio;
 import std.string;
+import std.typecons;
 
 import ltk.system;
 
@@ -99,11 +101,34 @@ else version(Windows)
 
 
 
+/** A handle corresponding to a spawned process. */
+struct Pid
+{
+private:
+    // Process ID number
+    int _pid = -1;
+
+
+public:
+
+    /** The ID number assigned to the process by the operating
+        system.
+    */
+    @property int processID() const
+    {
+        enforce(_pid > 0, "Pid not initialized.");
+        return _pid;
+    }
+}
+
+
+
+
 /** Spawn a new process.
 
     This function returns immediately, and the child process
     executes in parallel with its parent.  To wait for the
-    child process to finish, call Pid.wait().  (In general
+    child process to finish, call wait(Pid).  (In general
     one should always do this, to avoid child processes
     becoming 'zombies' when the parent process exits.
     Scope guards are perfect for this, see below for examples.)
@@ -163,7 +188,7 @@ else version(Windows)
     Open Firefox on the D homepage and wait for it to complete:
     ---
     auto pid = spawnProcess("firefox http://www.digitalmars.com/d/2.0");
-    pid.wait();
+    wait(pid);
     ---
     Use the "ls" command to retrieve a list of files:
     ---
@@ -171,7 +196,7 @@ else version(Windows)
     auto pipe = Pipe.create();
 
     auto pid = spawnProcess("ls", stdin, pipe.writeEnd);
-    scope(exit) pid.wait();
+    scope(exit) wait(pid);
 
     foreach (f; pipe.readEnd.byLine)  files ~= f.idup;
     ---
@@ -184,12 +209,12 @@ else version(Windows)
     auto file = File("dfiles.txt", "w");
 
     auto lsPid = spawnProcess("ls -l", stdin, pipe.writeEnd);
-    scope(exit) lsPid.wait();
+    scope(exit) wait(lsPid);
     
     auto grPid = spawnProcess("grep \\.d", pipe.readEnd, file);
-    scope(exit) grPid.wait();
+    scope(exit) wait(grPid);
     ---
-    Open a set of files with spaces in their names in OpenOffice
+    Open a set of files (with names that contain spaces) in OpenOffice
     Writer, and make it print any error messages to the standard
     output stream:
     ---
@@ -383,57 +408,6 @@ version(Posix) private bool isExecutable(string path)
 
 
 
-/** A handle corresponding to a spawned process. */
-struct Pid
-{
-private:
-    // Process ID
-    int _pid = -1;
-
-
-public:
-
-    /** The process ID. */
-    @property int processID()
-    {
-        enforce(_pid >= 0, "Pid not initialized.");
-        return _pid;
-    }
-
-
-    /** Wait for the spawned process to terminate and return its
-        exit status.
-
-        Note:
-        On POSIX systems, if the process is terminated by a signal,
-        this function returns a negative number whose absolute value
-        is the signal number.  (POSIX restricts normal exit codes
-        to the range 0-255.)
-    */
-    version(Posix) int wait()
-    {
-        enforce(_pid >= 0, "Pid not initialized.");
-        int status;
-        while(true)
-        {
-            waitpid(_pid, &status, 0);
-            if (WIFEXITED(status))
-            {
-                return WEXITSTATUS(status);
-            }
-            else if (WIFSIGNALED(status))
-            {
-                return -WTERMSIG(status);
-            }
-        }
-        assert (0);
-    }
-
-}
-
-
-
-
 /** Options controlling which streams are closed in the parent
     process when spawnProcess() returns.
 */
@@ -459,6 +433,111 @@ enum CloseStreams
     forceStdout = 16,                                   /// ditto
     forceStderr = 32,                                   /// ditto
     forceAll = forceStdin | forceStdout | forceStderr   /// ditto
+}
+
+
+
+
+/** Wait for a specific spawned process to terminate and return
+    its exit status.
+
+    Note:
+    On POSIX systems, if the process is terminated by a signal,
+    this function returns a negative number whose absolute value
+    is the signal number.  (POSIX restricts normal exit codes
+    to the range 0-255.)
+*/
+int wait(Pid pid)
+{
+    while(true)
+    {
+        int status;
+        auto check = waitpid(pid.processID, &status, 0);
+        enforce (check != -1  ||  errno != ECHILD,
+            "Process does not exist or is not a child process.");
+
+        if (WIFEXITED(status))          return WEXITSTATUS(status);
+        else if (WIFSIGNALED(status))   return -WTERMSIG(status);
+        // Process has stopped, but not terminated, so we continue waiting.
+    }
+}
+
+
+
+
+/** Wait for any spawned process to terminate, and return its Pid
+    and exit status.  (See wait() for info on POSIX exit codes).
+
+    Returns:
+    A Tuple with three fields:
+        pid, which contains the Pid of the terminated process;
+        status, which contains its exit status; and
+        any, which is false if there were no processes to be
+            waited for (in which case pid doesn't contain a
+            valid Pid).
+
+    Example:
+    ---
+    auto w = waitAny();
+    if (w.any)
+        writeln("Process %s exited with code %s", w.pid.processID, w.status);
+    else
+        writeln("No more child processes.");
+    ---
+*/
+Tuple!(Pid, "pid", int, "status", bool, "any") waitAny()
+{
+    typeof(return) result;
+
+    int rawStatus, rawPid;
+    while(true)
+    {
+        rawPid = core.sys.posix.sys.wait.wait(&rawStatus);
+
+        // errno is set to ECHILD if there are no more children to wait for.
+        // We ignore other errors.
+        if (rawPid  == -1  &&  errno == ECHILD)  return result;
+        else
+        {
+            if (WIFEXITED(rawStatus))
+            {
+                result.status = WEXITSTATUS(rawStatus);
+                break;
+            }
+            else if (WIFSIGNALED(rawStatus))
+            {
+                result.status = -WTERMSIG(rawStatus);
+                break;
+            }
+            // Process has stopped, but not terminated, so we continue waiting.
+        }
+    }
+
+    result.pid = Pid(rawPid);
+    result.any = true;
+    return result;
+}
+
+
+
+
+/** Wait for all spawned processes to terminate, and return their
+    Pids and exit statuses.  (See wait() for info on POSIX exit codes).
+
+    Returns:
+    An associative array where the Pids of the terminated processes
+    are the keys, and their exit statuses are the values.
+*/
+int[Pid] waitAll()
+{
+    typeof(return) status;
+
+    while (true)
+    {
+        auto w = waitAny();
+        if (!w.any) return status;
+        status[w.pid] = w.status;
+    }
 }
 
 
@@ -732,7 +811,7 @@ public:
 */
 int execute(string command)
 {
-    return spawnProcess(command).wait();
+    return wait(spawnProcess(command));
 }
 
 
@@ -745,14 +824,14 @@ int execute(string command, out string output)
     Appender!(ubyte[]) a;
     foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
     output = cast(string) a.data;
-    return pid.wait();
+    return wait(pid);
 }
 
 
 /// ditto
 int execute(string name, string[] args)
 {
-    return spawnProcess(name, args).wait();
+    return wait(spawnProcess(name, args));
 }
 
 
@@ -765,7 +844,7 @@ int execute(string name, string[] args, out string output)
     Appender!(ubyte[]) a;
     foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
     output = cast(string) a.data;
-    return pid.wait();
+    return wait(pid);
 }
 
 
@@ -785,7 +864,7 @@ int execute(string name, string[] args, out string output)
 */
 int shell(string command)
 {
-    return spawnProcess(getShell(), [shellSwitch, command]).wait();
+    return wait(spawnProcess(getShell(), [shellSwitch, command]));
 }
 
 
