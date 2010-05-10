@@ -19,7 +19,7 @@ void main()
         // Write and compile
         std.file.write(src, code);
         string compile = "dmd "~src~(libs.length>0 ? " "~libs : "");
-        assert (shell(compile) == 0, "Failed compilation: "~compile);
+        assert (shell(compile).status == 0, "Failed compilation: "~compile);
     }
 
     void ok()
@@ -133,12 +133,10 @@ void main()
         }
     });
     string out7;
-    int stat7 = execute(exe~" foo", out7);
-    assert (stat7 == 2);
-    assert (out7 == "hello world");
-    stat7 = execute(exe, ["foo", "bar"], out7);
-    assert (stat7 == 3);
-    assert (out7 == "hello world");
+    auto ret7 = execute(exe~" foo");
+    assert (ret7.status == 2  &&  ret7.output == "hello world");
+    ret7 = execute(exe, ["foo", "bar"]);
+    assert (ret7.status == 3  &&  ret7.output == "hello world");
     ok();
 
 

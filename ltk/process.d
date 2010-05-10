@@ -123,6 +123,14 @@ public:
 
 
 
+// These are just to prettify the spawnProcess documentation:
+private
+{
+    alias std.stdio.stdin stdin;
+    alias std.stdio.stdout stdout;
+    alias std.stdio.stderr stderr;
+}
+
 
 /** Spawn a new process.
 
@@ -223,64 +231,63 @@ public:
     ---
 */
 Pid spawnProcess(string command,
-    File stdin_ = std.stdio.stdin,
-    File stdout_ = std.stdio.stdout,
-    File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
+    File stdin_ = stdin,
+    File stdout_ = stdout,
+    File stderr_ = stderr,
+    Config config = Config.none)
 {
     auto splitCmd = split(command);
     return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
         environ,
-        stdin_, stdout_, stderr_, closeStreams, gui);
+        stdin_, stdout_, stderr_, config);
 }
 
 
 /// ditto
 Pid spawnProcess(string command, string[string] environmentVars,
-    File stdin_ = std.stdio.stdin,
-    File stdout_ = std.stdio.stdout,
-    File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
+    File stdin_ = stdin,
+    File stdout_ = stdout,
+    File stderr_ = stderr,
+    Config config = Config.none)
 {
     auto splitCmd = split(command);
     return spawnProcessImpl(splitCmd[0], splitCmd[1 .. $],
         toEnvz(environmentVars),
-        stdin_, stdout_, stderr_, closeStreams, gui);
+        stdin_, stdout_, stderr_, config);
 }
 
 
 /// ditto
 Pid spawnProcess(string name, const string[] args,
-    File stdin_ = std.stdio.stdin,
-    File stdout_ = std.stdio.stdout,
-    File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
+    File stdin_ = stdin,
+    File stdout_ = stdout,
+    File stderr_ = stderr,
+    Config config = Config.none)
 {
     return spawnProcessImpl(name, args,
         environ,
-        stdin_, stdout_, stderr_, closeStreams, gui);
+        stdin_, stdout_, stderr_, config);
 }
 
 
 /// ditto
 Pid spawnProcess(string name, const string[] args,
     string[string] environmentVars,
-    File stdin_ = std.stdio.stdin,
-    File stdout_ = std.stdio.stdout,
-    File stderr_ = std.stdio.stderr,
-    CloseStreams closeStreams = CloseStreams.all, bool gui = false)
+    File stdin_ = stdin,
+    File stdout_ = stdout,
+    File stderr_ = stderr,
+    Config config = Config.none)
 {
     return spawnProcessImpl(name, args,
         toEnvz(environmentVars),
-        stdin_, stdout_, stderr_, closeStreams, gui);
+        stdin_, stdout_, stderr_, config);
 }
 
 
 // The actual implementation of the above.
 version(Posix) private Pid spawnProcessImpl
     (string name, const string[] args, const char** envz,
-    File stdin_, File stdout_, File stderr_, CloseStreams closeStreams,
-    bool gui)
+    File stdin_, File stdout_, File stderr_, Config config)
 {
     // Make sure the file exists and is executable.
     if (name.indexOf(std.path.sep) == -1)
@@ -337,14 +344,15 @@ version(Posix) private Pid spawnProcessImpl
     {
         // Parent process:  Close streams and return.
 
-        if ((stdinFD > STDERR_FILENO && (closeStreams & CloseStreams.stdin))
-            || (closeStreams & CloseStreams.forceStdin))  stdin_.close();
-
-        if ((stdoutFD > STDERR_FILENO && (closeStreams & CloseStreams.stdout))
-            || (closeStreams & CloseStreams.forceStdout))  stdout_.close();
-
-        if ((stderrFD > STDERR_FILENO && (closeStreams & CloseStreams.stderr))
-            || (closeStreams & CloseStreams.forceStderr))  stderr_.close();
+        with (Config)
+        {
+            if (stdinFD  > STDERR_FILENO && !(config & noCloseStdin))
+                stdin_.close();
+            if (stdoutFD > STDERR_FILENO && !(config & noCloseStdout))
+                stdout_.close();
+            if (stderrFD > STDERR_FILENO && !(config & noCloseStderr))
+                stderr_.close();
+        }
 
         return pid;
     }
@@ -408,31 +416,26 @@ version(Posix) private bool isExecutable(string path)
 
 
 
-/** Options controlling which streams are closed in the parent
-    process when spawnProcess() returns.
-*/
-enum CloseStreams
+/** Options that control the behaviour of spawnProcess(). */
+enum Config
 {
-    /** Don't close any of the streams. */
     none = 0,
 
-    /** Close the streams that are given as the standard
-        input/output/error streams of the child process,
-        $(I unless) they are also the standard input/output/error
-        streams of the parent process.
+    /** Unless the child process inherits the standard
+        input/output/error streams of its parent, one almost
+        always wants the streams closed in the parent when
+        spawnProcess() returns.  Therefore, by default, this
+        is done.  If this is not desirable, pass any of these
+        options to spawnProcess.
     */
-    stdin  = 1,
-    stdout = 2,                                         /// ditto
-    stderr = 4,                                         /// ditto
-    all = stdin | stdout | stderr,                      /// ditto
+    noCloseStdin  = 1,
+    noCloseStdout = 2,                                  /// ditto
+    noCloseStderr = 4,                                  /// ditto
 
-    /** Close the specified streams, $(I even if they are
-        the standard streams of the parent process).
+    /** On Windows, this option causes the process to run in
+        a graphical console.  On POSIX it has no effect.
     */
-    forceStdin  =  8,        
-    forceStdout = 16,                                   /// ditto
-    forceStderr = 32,                                   /// ditto
-    forceAll = forceStdin | forceStdout | forceStderr   /// ditto
+    gui = 8,
 }
 
 
@@ -712,7 +715,7 @@ ProcessPipes pipeProcess(string name, string[] args,
     }
 
     pipes._pid = spawnProcess(name, args, stdinFile, stdoutFile,
-        stderrFile, CloseStreams.all, gui);
+        stderrFile, (gui ? Config.gui : Config.none));
 
     return pipes;
 }
@@ -805,46 +808,36 @@ public:
 
 /** Execute the given program.
     This function blocks until the program returns, and returns
-    its exit code.
-    The program's output can be stored in a string and returned
-    through the optional output argument.
+    its exit code and output.
 */
-int execute(string command)
-{
-    return wait(spawnProcess(command));
-}
-
-
-/// ditto
-int execute(string command, out string output)
+Tuple!(int, "status", string, "output") execute(string command)
 {
     auto p = Pipe.create();
     auto pid = spawnProcess(command, std.stdio.stdin, p.writeEnd);
 
     Appender!(ubyte[]) a;
     foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
-    output = cast(string) a.data;
-    return wait(pid);
+
+    typeof(return) r;
+    r.output = cast(string) a.data;
+    r.status = wait(pid);
+    return r;
 }
 
 
 /// ditto
-int execute(string name, string[] args)
-{
-    return wait(spawnProcess(name, args));
-}
-
-
-/// ditto
-int execute(string name, string[] args, out string output)
+Tuple!(int, "status", string, "output") execute(string name, string[] args)
 {
     auto p = Pipe.create();
     auto pid = spawnProcess(name, args, std.stdio.stdin, p.writeEnd);
 
     Appender!(ubyte[]) a;
     foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
-    output = cast(string) a.data;
-    return wait(pid);
+
+    typeof(return) r;
+    r.output = cast(string) a.data;
+    r.status = wait(pid);
+    return r;
 }
 
 
@@ -853,25 +846,15 @@ int execute(string name, string[] args, out string output)
 /** Execute the given command in the user's default shell (or
     '/bin/sh' if the default shell can't be determined).
     This function blocks until the command returns, and returns
-    the exit code of the command.
-
-    The output of the command can be stored in a string and returned
-    through the optional output argument.
+    the exit code of the command, as well as its output.
     ---
     string myFiles;
     shell("ls -l", myFiles);
     ---
 */
-int shell(string command)
+Tuple!(int, "status", string, "output") shell(string command)
 {
-    return wait(spawnProcess(getShell(), [shellSwitch, command]));
-}
-
-
-/// ditto
-int shell(string command, out string output)
-{
-    return execute(getShell(), [shellSwitch, command], output);
+    return execute(getShell(), [shellSwitch, command]);
 }
 
 
