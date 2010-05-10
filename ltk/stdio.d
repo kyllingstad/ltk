@@ -80,6 +80,8 @@ struct UnbufferedFile
             else
                 flags = O_WRONLY | O_CREAT | O_APPEND;
             break;
+        default:
+            enforce(false, "Invalid file open mode");
         }
 
         auto fd = open(toStringz(filename), flags, octal!666);
