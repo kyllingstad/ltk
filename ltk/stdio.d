@@ -123,7 +123,7 @@ public:
 
 
 
-    /** First calls detach() and then attempts to open the given
+    /** First calls detach() and then attempts to _open the given
         file with the specified mode.
     */
     void open(string filename, string mode)
@@ -176,7 +176,7 @@ public:
 
 
 
-    /** Attempt to read a single value from the file, and return
+    /** Attempt to _read a single value from the file, and return
         true on success, false on failure.
     */
     bool read(T)(ref T t) const
@@ -200,7 +200,7 @@ public:
 
 
 
-    /** Attempt to read up to buffer.length values from the
+    /** Attempt to _read up to buffer.length values from the
         file into buffer and return buffer[0..n], where n is
         the actual number of values read.
     */
@@ -223,7 +223,7 @@ public:
 
 
 
-    /** Attempt to write a single value to the file, and return
+    /** Attempt to _write a single value to the file, and return
         true on success, false on failure.
     */
     bool write(T)(T t) const 
@@ -248,7 +248,7 @@ public:
 
 
 
-    /** Attempt to write the contents of buffer to the file,
+    /** Attempt to _write the contents of buffer to the file,
         and return the number of elements written.
     */
     size_t write(T)(const T[] buffer) const
@@ -320,14 +320,14 @@ public:
         Note that the array is reused between calls to popFront().
 
         ---
-        auto input = UnbufferedFile("secret.txt", "r");
-        auto output = UnbufferedFile("secret.encrypted", "w");
+        auto input = UnbufferedFile("secret_stuff.txt", "r");
+        auto output = UnbufferedFile("encrypted", "w");
 
         // Man, no-one is *ever* going to break this.
-        foreach (chunk; input.byChunk(1024))
+        foreach (data; input.byChunk(1024))
         {
-            chunk[] += 1;
-            output.write(chunk);
+            data[] += 1;
+            output.write(data);
         }
         ---
     */
@@ -401,6 +401,9 @@ public:
         try to deduce the correct mode for the file, and throw an
         exception on failure.  This will happen in the case of pipes
         for instance, for which the OS mode flag isn't set.
+
+        Todo:
+        Make this doc comment invisible to users when module is done.
     */
     static UnbufferedFile wrapFileDescriptor(int fd, string name=null,
         string mode=null, bool autoClose=false)
@@ -439,6 +442,9 @@ public:
 
     /** Return the POSIX file descriptor referred to by this
         UnbufferedFile.
+
+        Todo:
+        Make this doc comment invisible to users when module is done.
     */
     @property int fileDescriptor() { return p.fileDescriptor; }
 }
@@ -469,9 +475,12 @@ unittest
 
 
 
-// TODO: Make this a member function of File.
-/// Return an UnbufferedFile that points to the same file as
-/// the given File object.
+/** Return an UnbufferedFile that points to the same file as
+    the given File object.
+
+    Todo:
+    Make this a member function of File.
+*/
 UnbufferedFile unbuffered(File f, bool autoClose = false)
 {
     return UnbufferedFile.wrapFileDescriptor(

@@ -4,22 +4,6 @@
     functions like extension() will work with it just as if it was a file.
     To differentiate these cases, use the std.file module first (i.e.
     std.file.isDir()).
-
-    The module supports both Windows and POSIX paths, and all the functions
-    are therefore placed inside the Path template, which takes an identifier
-    determining the operating system.  The appropriate
-    version of this template is mixed into the module scope, so if you're
-    on Windows, you don't have to call Path!Windows.foo(), you can just call
-    foo() directly.
-
-    The benefit of this is that if you are on Windows and need to manipulate
-    POSIX paths -- for an FTP client, say -- then the POSIX path functions
-    are still available through the Path!Posix template.
-    ---
-    // On Windows:
-    getDirectory("c:\\foo\\bar.txt")         -->  "c:\\foo"
-    Path!Posix.getDirectory("/foo/bar.txt")  -->  "/foo"
-    ---
 */
 module ltk.path;
 
