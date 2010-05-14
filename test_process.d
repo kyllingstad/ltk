@@ -2,6 +2,7 @@ import std.file;
 import std.stdio;
 import std.string;
 import ltk.process;
+import ltk.stdio;
 
 version(Posix)
 {
@@ -99,7 +100,7 @@ void main()
     });
     auto pipe5 = Pipe.create();
     pid = spawnProcess(exe, pipe5.readEnd);
-    pipe5.writeEnd.writeln("hello world");
+    pipe5.writeEnd.write("hello world\n");
     assert (wait(pid) == 0);
     pipe5.close();
     ok();
@@ -110,15 +111,18 @@ void main()
         import std.stdio;
         void main()
         {
-            stdout.writeln("hello output");
-            stderr.writeln("hello error");
+            stdout.write("hello output");
+            stderr.write("hello error");
         }
     });
     auto pipe6o = Pipe.create();
     auto pipe6e = Pipe.create();
-    pid = spawnProcess(exe, stdin, pipe6o.writeEnd, pipe6e.writeEnd);
-    assert (pipe6o.readEnd.readln().chomp() == "hello output");
-    assert (pipe6e.readEnd.readln().chomp() == "hello error");
+    pid = spawnProcess(exe, ustdin, pipe6o.writeEnd, pipe6e.writeEnd);
+    auto buf6 = new char[20];
+    auto rd6 = pipe6o.readEnd.read(buf6);
+    assert (rd6 == "hello output");
+    rd6 = pipe6e.readEnd.read(buf6);
+    assert (rd6 == "hello error");
     wait(pid);
     ok();
 
@@ -196,9 +200,9 @@ version (Posix)
 
     // POSIX test 2: Pseudo-test of path-searching algorithm.
     auto pipeX = Pipe.create();
-    pid = spawnProcess("ls -l", stdin, pipeX.writeEnd);
+    pid = spawnProcess("ls -l", ustdin, pipeX.writeEnd);
     bool found = false;
-    foreach (line; pipeX.readEnd.byLine)
+    foreach (line; pipeX.readEnd.buffered.byLine)
     {
         if (line.indexOf("deleteme.d") >= 0)  found = true;
     }

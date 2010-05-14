@@ -1,28 +1,29 @@
 /** Facilities for executing processes.
 
-    The most basic function in this module is the spawnProcess() function.
-    It spawns a new process, assigns it a set of input/output/error streams,
-    and returns immediately, leaving the child process to execute in parallel
-    with its parent.
-
-    In general, the parent process should always wait for all child processes
-    to finish before it terminates.  Otherwise the child processes
-    may become 'zombies', i.e. defunct processes that only take up slots
-    in the OS process table.  Use the wait*() functions to do this.
-    (Tip:  Scope guards are a convenient way to do this.  See the
-    spawnProcess() documentation below for examples.)
-
-    In addition to spawnProcess() there are a set of convenience functions
-    that take care of the most common tasks:
+    This is a summary of the functions in this module:
     $(UL $(LI
-        pipeProcess() and pipeShell() automatically create a set of
+        spawnProcess() spawns a new _process, optionally assigning it an
+        arbitrary set of standard input, output, and error streams.
+        It returns immediately, leaving the child _process to execute in
+        parallel with its parent.  All the other _process-spawning
+        functions in this module build on spawnProcess().)
+    $(LI
+        wait() makes the parent _process wait for a child _process to
+        terminate.  In general one should always do this, to avoid
+        child _processes becoming 'zombies' when the parent _process exits.
+        Scope guards are perfect for this – see the spawnProcess()
+        documentation for examples.)
+    $(LI
+        pipeProcess() and pipeShell() also spawn a child _process which
+        runs in parallel with its parent.  However, instead of taking
+        arbitrary streams, they automatically create a set of
         pipes that allow the parent to communicate with the child
         through the child's standard input, output, and/or error streams.
         These functions correspond roughly to C's popen() function.)
     $(LI
-        execute() and shell() start a new process and wait for it
-        to complete before returning.  Optionally, they can capture
-        the process' standard output and return it as a string.
+        execute() and shell() start a new _process and wait for it
+        to complete before returning.  Additionally, they capture
+        the _process' standard output and return it as a string.
         These correspond roughly to C's system() function.
     ))
     The functions that have names containing "shell" run the given command
@@ -70,6 +71,7 @@ import std.stdio;
 import std.string;
 import std.typecons;
 
+import ltk.stdio;
 import ltk.system;
 
 
@@ -105,7 +107,7 @@ else version(Windows)
 struct Pid
 {
 private:
-    // Process ID number
+    // Process ID number, assigned by the OS.
     int _pid = -1;
 
 
@@ -123,23 +125,11 @@ public:
 
 
 
-// These are just to prettify the spawnProcess documentation:
-private
-{
-    alias std.stdio.stdin stdin;
-    alias std.stdio.stdout stdout;
-    alias std.stdio.stderr stderr;
-}
-
 
 /** Spawn a new process.
 
     This function returns immediately, and the child process
-    executes in parallel with its parent.  To wait for the
-    child process to finish, call wait(Pid).  (In general
-    one should always do this, to avoid child processes
-    becoming 'zombies' when the parent process exits.
-    Scope guards are perfect for this, see below for examples.)
+    executes in parallel with its parent.
 
     Unless a directory is specified in the command (or name)
     parameter, this function will search the directories in the
@@ -158,39 +148,34 @@ private
             same environment as the parent process.
 
         stdin_ = The standard input stream of the child process.
-            This can be any File that is opened for reading.  By
-            default the child process inherits the parent's input
+            This can be any UnbufferedFile that is opened for reading.
+            By default the child process inherits the parent's input
             stream.
 
         stdout_ = The standard output stream of the child process.
-            This can be any File that is opened for writing.  By
-            default the child process inherits the parent's output
+            This can be any UnbufferedFile that is opened for writing.
+            By default the child process inherits the parent's output
             stream.
 
         stderr_ = The standard error stream of the child process.
-            This can be any File that is opened for writing.  By
-            default the child process inherits the parent's error
+            This can be any UnbufferedFile that is opened for writing.
+            By default the child process inherits the parent's error
             stream.
 
-        closeStreams = Control which of the given File objects are
-            closed in the parent process when this function returns
-            (see below for more info).
-
-        gui = Whether to open a graphical console for the process.
-            This option is for Windows, on POSIX it has no effect.
+        config = Options controlling the behaviour of spawnProcess().
 
         name = The name of the executable file.
 
-        args = The command line arguments to give to the program.
+        args = The _command line arguments to give to the program.
             (There is no need to specify the program name as the
             zeroth argument, this is done automatically.)
 
     Note:
-    If you pass a File object that is $(I not) one of the standard
+    If you pass a UnbufferedFile object that is $(I not) one of the standard
     input/output/error streams of the parent process, that stream
     will by default be closed in the parent process when this
-    function returns.  Use the closeStreams argument to control which
-    streams are closed or not.
+    function returns.  See the Config documentation below for information
+    about how to disable this behaviour.
 
     Examples:
     Open Firefox on the D homepage and wait for it to complete:
@@ -203,10 +188,10 @@ private
     string[] files;
     auto pipe = Pipe.create();
 
-    auto pid = spawnProcess("ls", stdin, pipe.writeEnd);
+    auto pid = spawnProcess("ls", ustdin, pipe.writeEnd);
     scope(exit) wait(pid);
 
-    foreach (f; pipe.readEnd.byLine)  files ~= f.idup;
+    foreach (f; pipe.readEnd.buffered().byLine())  files ~= f.idup;
     ---
     Use the "ls -l" command to get a list of files, pipe the output
     to "grep" and let it filter out all files except D source files,
@@ -214,26 +199,26 @@ private
     ---
     // Let's emulate the command "ls -l | grep \.d > dfiles.txt"
     auto pipe = Pipe.create();
-    auto file = File("dfiles.txt", "w");
+    auto file = UnbufferedFile("dfiles.txt", "w");
 
-    auto lsPid = spawnProcess("ls -l", stdin, pipe.writeEnd);
+    auto lsPid = spawnProcess("ls -l", ustdin, pipe.writeEnd);
     scope(exit) wait(lsPid);
     
     auto grPid = spawnProcess("grep \\.d", pipe.readEnd, file);
     scope(exit) wait(grPid);
     ---
-    Open a set of files (with names that contain spaces) in OpenOffice
-    Writer, and make it print any error messages to the standard
-    output stream:
+    Open a set of files in OpenOffice Writer, and make it print
+    any error messages to the standard output stream.  Note that since
+    the filenames contain spaces, we must specify them as an array:
     ---
     spawnProcess("oowriter", ["my document.odt", "your document.odt"],
-        stdin, stdout, stdout);
+        ustdin, ustdout, ustdout);
     ---
 */
 Pid spawnProcess(string command,
-    File stdin_ = stdin,
-    File stdout_ = stdout,
-    File stderr_ = stderr,
+    UnbufferedFile stdin_ = ustdin,
+    UnbufferedFile stdout_ = ustdout,
+    UnbufferedFile stderr_ = ustderr,
     Config config = Config.none)
 {
     auto splitCmd = split(command);
@@ -245,9 +230,9 @@ Pid spawnProcess(string command,
 
 /// ditto
 Pid spawnProcess(string command, string[string] environmentVars,
-    File stdin_ = stdin,
-    File stdout_ = stdout,
-    File stderr_ = stderr,
+    UnbufferedFile stdin_ = ustdin,
+    UnbufferedFile stdout_ = ustdout,
+    UnbufferedFile stderr_ = ustderr,
     Config config = Config.none)
 {
     auto splitCmd = split(command);
@@ -259,9 +244,9 @@ Pid spawnProcess(string command, string[string] environmentVars,
 
 /// ditto
 Pid spawnProcess(string name, const string[] args,
-    File stdin_ = stdin,
-    File stdout_ = stdout,
-    File stderr_ = stderr,
+    UnbufferedFile stdin_ = ustdin,
+    UnbufferedFile stdout_ = ustdout,
+    UnbufferedFile stderr_ = ustderr,
     Config config = Config.none)
 {
     return spawnProcessImpl(name, args,
@@ -273,9 +258,9 @@ Pid spawnProcess(string name, const string[] args,
 /// ditto
 Pid spawnProcess(string name, const string[] args,
     string[string] environmentVars,
-    File stdin_ = stdin,
-    File stdout_ = stdout,
-    File stderr_ = stderr,
+    UnbufferedFile stdin_ = ustdin,
+    UnbufferedFile stdout_ = ustdout,
+    UnbufferedFile stderr_ = ustderr,
     Config config = Config.none)
 {
     return spawnProcessImpl(name, args,
@@ -287,7 +272,8 @@ Pid spawnProcess(string name, const string[] args,
 // The actual implementation of the above.
 version(Posix) private Pid spawnProcessImpl
     (string name, const string[] args, const char** envz,
-    File stdin_, File stdout_, File stderr_, Config config)
+    UnbufferedFile stdin_, UnbufferedFile stdout_, UnbufferedFile stderr_,
+    Config config)
 {
     // Make sure the file exists and is executable.
     if (name.indexOf(std.path.sep) == -1)
@@ -302,17 +288,14 @@ version(Posix) private Pid spawnProcessImpl
     }
 
     // Get the file descriptors of the streams.
-    int stdinFD  = core.stdc.stdio.fileno(stdin_.getFP());
-    errnoEnforce(stdinFD != -1, "Invalid stdin stream");
-    int stdoutFD = core.stdc.stdio.fileno(stdout_.getFP());
-    errnoEnforce(stdoutFD != -1, "Invalid stdout stream");
-    int stderrFD = core.stdc.stdio.fileno(stderr_.getFP());
-    errnoEnforce(stderrFD != -1, "Invalid stderr stream");
+    auto stdinFD   = stdin_.fileDescriptor;
+    auto stdoutFD  = stdout_.fileDescriptor;
+    auto stderrFD  = stderr_.fileDescriptor;
 
     Pid pid;
     pid._pid = fork();
     errnoEnforce (pid._pid >= 0, "Cannot spawn new process");
-    
+
     if (pid._pid == 0)
     {
         // Child process
@@ -442,7 +425,13 @@ enum Config
 
 
 /** Wait for a specific spawned process to terminate and return
-    its exit status.
+    its exit status.  See the spawnProcess() documentation above
+    for examples of usage.
+    
+    In general one should always wait for child processes to terminate
+    before exiting the parent process.  Otherwise, they may become
+    'zombies' – processes that are defunct, yet still occupy a slot
+    in the OS process table.
 
     Note:
     On POSIX systems, if the process is terminated by a signal,
@@ -450,7 +439,7 @@ enum Config
     is the signal number.  (POSIX restricts normal exit codes
     to the range 0-255.)
 */
-int wait(Pid pid)
+version (Posix) int wait(Pid pid)
 {
     while(true)
     {
@@ -488,7 +477,7 @@ int wait(Pid pid)
         writeln("No more child processes.");
     ---
 */
-Tuple!(Pid, "pid", int, "status", bool, "any") waitAny()
+version (Posix) Tuple!(Pid, "pid", int, "status", bool, "any") waitAny()
 {
     typeof(return) result;
 
@@ -531,7 +520,7 @@ Tuple!(Pid, "pid", int, "status", bool, "any") waitAny()
     An associative array where the Pids of the terminated processes
     are the keys, and their exit statuses are the values.
 */
-int[Pid] waitAll()
+version (Posix) int[Pid] waitAll()
 {
     typeof(return) status;
 
@@ -550,8 +539,9 @@ int[Pid] waitAll()
     and read from the other.
     ---
     auto p = Pipe.create();
-    p.writeEnd.writeln("Hello World");
-    assert (p.readEnd.readln().chomp() == "Hello World");
+    p.writeEnd.write("Hello World");
+    auto data = p.readEnd.read(new char[20]);
+    assert (data == "Hello World");
     ---
     Pipes can, for example, be used for interprocess communication
     by spawning a new process and passing one end of the pipe to
@@ -561,46 +551,40 @@ int[Pid] waitAll()
 struct Pipe
 {
 private:
-    File _read, _write;
+    UnbufferedFile _read, _write;
 
 
 public:
     /** The read end of the pipe. */
-    @property File readEnd() { return _read; }
+    @property UnbufferedFile readEnd() { return _read; }
 
 
     /** The write end of the pipe. */
-    @property File writeEnd() { return _write; }
+    @property UnbufferedFile writeEnd() { return _write; }
 
 
     /** Create a new pipe. */
-    version(Posix) static Pipe create()
+    version(Posix) static Pipe create(bool autoClose=true)
     {
         int[2] fds;
         errnoEnforce(pipe(&fds) == 0, "Unable to create pipe");
 
         Pipe p;
-        
-        // TODO: Using the internals of File like this feels like a hack,
-        // but the File.wrapFile() function disables automatic closing of
-        // the file.  Perhaps there should be a protected version of
-        // wrapFile() that fills this purpose?
-        p._read.p = new File.Impl(
-            errnoEnforce(fdopen(fds[0], "r"), "Cannot open read end of pipe"),
-            1, null);
-        p._write.p = new File.Impl(
-            errnoEnforce(fdopen(fds[1], "w"), "Cannot open write end of pipe"),
-            1, null);
-
+        p._read  =
+            UnbufferedFile.wrapFileDescriptor(fds[0], null, "r", autoClose);
+        p._write =
+            UnbufferedFile.wrapFileDescriptor(fds[1], null, "w", autoClose);
         return p;
     }
 
 
     /** Close both ends of the pipe.
     
-        Normally it is not necessary to do this manually, as File objects
-        are automatically closed when there are no more references to them.
-        (See the std.stdio.File documentation for more info.)
+        Normally it is not necessary to do this manually, as UnbufferedFile
+        objects are automatically closed when there are no more references
+        to them.  However, this behaviour can be disabled using the
+        autoClose argument to Pipe.create(), in which case the pipes have to
+        be closed manually.
 
         Note that if either end of the pipe has been passed to a child process,
         it will only be closed in the parent process.
@@ -615,8 +599,10 @@ public:
 unittest
 {
     auto p = Pipe.create();
-    p.writeEnd.writeln("Hello World");
-    assert (p.readEnd.readln().chomp() == "Hello World");
+    p.writeEnd.write("Hello World");
+
+    auto data = p.readEnd.read(new char[20]);
+    assert (data == "Hello World");
 }
 
 
@@ -626,7 +612,11 @@ unittest
     input, output and/or error streams.  This function returns
     immediately, leaving the child process to execute in parallel
     with the parent.
+    
+    pipeShell() invokes the user's _command interpreter
+    to execute the given program or _command.
 
+    Example:
     ---
     auto pipes = pipeProcess("my_application");
 
@@ -640,31 +630,31 @@ unittest
     ---
 */
 ProcessPipes pipeProcess(string command,
-    Redirect redirectFlags = Redirect.all, bool gui = false)
+    Redirect redirectFlags = Redirect.all)
 {
     auto splitCmd = split(command);
-    return pipeProcess(splitCmd[0], splitCmd[1 .. $], redirectFlags, gui);
+    return pipeProcess(splitCmd[0], splitCmd[1 .. $], redirectFlags);
 }
 
 
 /// ditto
 ProcessPipes pipeProcess(string name, string[] args,
-    Redirect redirectFlags = Redirect.all, bool gui = false)
+    Redirect redirectFlags = Redirect.all)
 {
-    File stdinFile, stdoutFile, stderrFile;
+    UnbufferedFile stdinFile, stdoutFile, stderrFile;
 
     ProcessPipes pipes;
     pipes._redirectFlags = redirectFlags;
 
     if (redirectFlags & Redirect.stdin)
     {
-        auto p = Pipe.create();
+        auto p = Pipe.create(false);
         stdinFile = p.readEnd;
-        pipes._stdin = p.writeEnd;
+        pipes._stdin = p.writeEnd.buffered(true);
     }
     else
     {
-        stdinFile = std.stdio.stdin;
+        stdinFile = ustdin;
     }
 
     if (redirectFlags & Redirect.stdout)
@@ -672,13 +662,13 @@ ProcessPipes pipeProcess(string name, string[] args,
         enforce((redirectFlags & Redirect.stdoutToStderr) == 0,
             "Invalid combination of options: Redirect.stdout | "
            ~"Redirect.stdoutToStderr");
-        auto p = Pipe.create();
+        auto p = Pipe.create(false);
         stdoutFile = p.writeEnd;
-        pipes._stdout = p.readEnd;
+        pipes._stdout = p.readEnd.buffered(true);
     }
     else
     {
-        stdoutFile = std.stdio.stdout;
+        stdoutFile = ustdout;
     }
 
     if (redirectFlags & Redirect.stderr)
@@ -686,13 +676,13 @@ ProcessPipes pipeProcess(string name, string[] args,
         enforce((redirectFlags & Redirect.stderrToStdout) == 0,
             "Invalid combination of options: Redirect.stderr | "
            ~"Redirect.stderrToStdout");
-        auto p = Pipe.create();
+        auto p = Pipe.create(false);
         stderrFile = p.writeEnd;
-        pipes._stderr = p.readEnd;
+        pipes._stderr = p.readEnd.buffered(true);
     }
     else
     {
-        stderrFile = std.stdio.stderr;
+        stderrFile = ustderr;
     }
 
     if (redirectFlags & Redirect.stdoutToStderr)
@@ -700,9 +690,9 @@ ProcessPipes pipeProcess(string name, string[] args,
         if (redirectFlags & Redirect.stderrToStdout)
         {
             // We know that neither of the other options have been
-            // set, so we assign the std.stdio.std* streams directly.
-            stdoutFile = std.stdio.stderr;
-            stderrFile = std.stdio.stdout;
+            // set, so we assign the ustd* streams directly.
+            stdoutFile = ustderr;
+            stderrFile = ustdout;
         }
         else
         {
@@ -714,22 +704,15 @@ ProcessPipes pipeProcess(string name, string[] args,
         stderrFile = stdoutFile;
     }
 
-    pipes._pid = spawnProcess(name, args, stdinFile, stdoutFile,
-        stderrFile, (gui ? Config.gui : Config.none));
-
+    pipes._pid = spawnProcess(name, args, stdinFile, stdoutFile);
     return pipes;
 }
 
 
-
-
-/** Same as the above, but invoke the shell to execute the given program
-    or command.
-*/
-ProcessPipes pipeShell(string command,
-    Redirect redirectFlags = Redirect.all, bool gui=false)
+/// ditto
+ProcessPipes pipeShell(string command, Redirect redirectFlags = Redirect.all)
 {
-    return pipeProcess(getShell(), [shellSwitch, command], redirectFlags, gui);
+    return pipeProcess(getShell(), [shellSwitch, command], redirectFlags);
 }
 
 
@@ -808,19 +791,20 @@ public:
 
 /** Execute the given program.
     This function blocks until the program returns, and returns
-    its exit code and output.
+    its exit code and output (what it writes to its
+    standard output $(I and) error streams).
 */
 Tuple!(int, "status", string, "output") execute(string command)
 {
-    auto p = Pipe.create();
-    auto pid = spawnProcess(command, std.stdio.stdin, p.writeEnd);
+    auto p = pipeProcess(command,
+        Redirect.stdout & Redirect.stderrToStdout);
 
     Appender!(ubyte[]) a;
-    foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
+    foreach (ubyte[] chunk; p.stdout.byChunk(4096))  a.put(chunk);
 
     typeof(return) r;
     r.output = cast(string) a.data;
-    r.status = wait(pid);
+    r.status = wait(p.pid);
     return r;
 }
 
@@ -828,28 +812,28 @@ Tuple!(int, "status", string, "output") execute(string command)
 /// ditto
 Tuple!(int, "status", string, "output") execute(string name, string[] args)
 {
-    auto p = Pipe.create();
-    auto pid = spawnProcess(name, args, std.stdio.stdin, p.writeEnd);
+    auto p = pipeProcess(name, args,
+        Redirect.stdout & Redirect.stderrToStdout);
 
     Appender!(ubyte[]) a;
-    foreach (ubyte[] chunk; p.readEnd.byChunk(4096))  a.put(chunk);
+    foreach (ubyte[] chunk; p.stdout.byChunk(4096))  a.put(chunk);
 
     typeof(return) r;
     r.output = cast(string) a.data;
-    r.status = wait(pid);
+    r.status = wait(p.pid);
     return r;
 }
 
 
 
 
-/** Execute the given command in the user's default shell (or
-    '/bin/sh' if the default shell can't be determined).
-    This function blocks until the command returns, and returns
-    the exit code of the command, as well as its output.
+/** Execute command in the user's default _shell.
+    This function blocks until the _command returns, and returns
+    its exit code and output (what the process writes to its
+    standard output $(I and) error streams).
     ---
-    string myFiles;
-    shell("ls -l", myFiles);
+    auto ls = shell("ls -l", myFiles);
+    writefln("ls exited with code %s and said: %s", ls.status, ls.output);
     ---
 */
 Tuple!(int, "status", string, "output") shell(string command)
