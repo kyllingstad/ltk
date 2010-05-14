@@ -144,48 +144,6 @@ void main()
     ok();
 
 
-    // Test 8: Test waitAny().
-    compile(q{
-        import core.thread, std.conv;
-        enum milliseconds = 10_000;
-        int main(string[] args)
-        {
-            int t = to!int(args[1]);
-            Thread.sleep(t*milliseconds);
-            return t;
-        }
-    });
-    auto pid8_1 = spawnProcess(exe, ["100"]);
-    auto pid8_2 = spawnProcess(exe, ["200"]);
-    auto stat8 = waitAny();
-    assert (stat8.any && stat8.status == 100 && stat8.pid == pid8_1);
-    stat8 = waitAny();
-    assert (stat8.any && stat8.status == 200 && stat8.pid == pid8_2);
-    stat8 = waitAny();
-    assert (!stat8.any);
-    ok();
-
-
-    // Test 9: Test waitAll().
-    compile(q{
-        import core.thread, std.conv;
-        enum milliseconds = 10_000;
-        int main(string[] args)
-        {
-            int t = to!int(args[1]);
-            Thread.sleep(t*milliseconds);
-            return t;
-        }
-    });
-    auto pid9_1 = spawnProcess(exe, ["100"]);
-    auto pid9_2 = spawnProcess(exe, ["200"]);
-    auto stat9 = waitAll();
-    assert (stat9[pid9_1] == 100);
-    assert (stat9[pid9_2] == 200);
-    assert (stat9.length == 2);
-    ok();
-
-
 version (Posix)
 {
     // POSIX test 1: Terminate by signal.

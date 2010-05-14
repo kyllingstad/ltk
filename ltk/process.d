@@ -719,7 +719,7 @@ public:
 Tuple!(int, "status", string, "output") execute(string command)
 {
     auto p = pipeProcess(command,
-        Redirect.stdout & Redirect.stderrToStdout);
+        Redirect.stdout | Redirect.stderrToStdout);
 
     Appender!(ubyte[]) a;
     foreach (ubyte[] chunk; p.stdout.byChunk(4096))  a.put(chunk);
@@ -735,7 +735,7 @@ Tuple!(int, "status", string, "output") execute(string command)
 Tuple!(int, "status", string, "output") execute(string name, string[] args)
 {
     auto p = pipeProcess(name, args,
-        Redirect.stdout & Redirect.stderrToStdout);
+        Redirect.stdout | Redirect.stderrToStdout);
 
     Appender!(ubyte[]) a;
     foreach (ubyte[] chunk; p.stdout.byChunk(4096))  a.put(chunk);
