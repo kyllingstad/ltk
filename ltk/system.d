@@ -13,7 +13,7 @@ import core.stdc.string;
 version (Windows)
 {
     import core.sys.windows.windows;
-    import std.utf: toUTF16z;
+    import std.utf;
     import std.windows.syserror;
 }
 version (Posix) import core.sys.posix.stdlib;
@@ -48,30 +48,48 @@ version(Windows)
 
 
 
+// Return the length of an environment variable (in number of
+// wchars, not including the null terminator), -1 if it doesn't exist.
+version(Windows) private int envVarLength(LPCWSTR namez)
+{
+    return (cast(int) GetEnvironmentVariableW(namez, null, 0)) - 1;
+}
+
+
+
+
 /** Return the value of the environment variable with the given name.
     Calls core.stdc.stdlib._getenv internally.
 */
 string getEnv(string name)
 {
-    // Cache the last call's result.
-    static string lastResult;
+    version(Posix)
+    {
+        // Cache the last call's result.
+        static string lastResult;
 
-    const valuez = getenv(toStringz(name));
-    if (valuez == null)  return null;
-    auto value = valuez[0 .. strlen(valuez)];
-    if (value == lastResult) return lastResult;
+        const valuez = getenv(toStringz(name));
+        if (valuez == null)  return null;
+        auto value = valuez[0 .. strlen(valuez)];
+        if (value == lastResult) return lastResult;
 
-    return lastResult = value.idup;
+        return lastResult = value.idup;
+    }
+
+    else version(Windows)
+    {
+        auto namez = toUTF16z(name);
+        auto len = envVarLength(namez);
+        if (len < 0) return null;
+
+        auto buf = new WCHAR[len+1];
+        GetEnvironmentVariableW(namez, buf.ptr, buf.length);
+        return toUTF8(buf[0 .. $-1]);
+    }
+
+    else static assert(false);
 }
 
-
-
-
-// Check whether an environment variable exists.
-version(Windows) private bool envExists(LPCWSTR namez)
-{
-    return GetEnvironmentVariableW(namez, null, 0) != 0;
-}
 
 
 
@@ -90,7 +108,7 @@ void setEnv(string name, string value, bool overwrite)
     else version(Windows)
     {
         auto namez = toUTF16z(name);
-        if (!overwrite && envExists(namez)) return;
+        if (!overwrite && envVarLength(namez) >= 0) return;
 
         enforce(
             SetEnvironmentVariableW(namez, toUTF16z(value)),
@@ -121,7 +139,7 @@ void unsetEnv(string name)
     else version(Windows)
     {
         auto namez = toUTF16z(name);
-        if (envExists(namez))  enforce(
+        if (envVarLength(namez) >= 0)  enforce(
             SetEnvironmentVariableW(namez, null),
             sysErrorString(GetLastError())
         );
@@ -130,12 +148,13 @@ void unsetEnv(string name)
     else static assert(0);
 }
 
-
+import std.stdio;
 // Unittest for getEnv(), setEnv(), and unsetEnv()
 unittest
 {
     // New variable
     setEnv("foo", "bar", true);
+    writeln(getEnv("foo"));
     assert (getEnv("foo") == "bar");
 
     // Overwrite variable
