@@ -169,7 +169,7 @@ unittest
     unsetEnv("foo");
     assert (getEnv("foo") == null);
 
-    // Unset variable again (should succeed)
+    // Unset variable again (should be a noop)
     unsetEnv("foo");
 
     // Check that exceptions are thrown when they should be.
@@ -182,7 +182,7 @@ unittest
 /** Return an associative array containing (copies of) all the
     process' environment variables.
 */
-string[string] getEnv()
+string[string] allEnv()
 {
     string[string] envArray;
 
@@ -241,6 +241,6 @@ string[string] getEnv()
 
 unittest
 {
-    auto env = getEnv();
+    auto env = allEnv();
     assert (env["PATH"] == getEnv("PATH"));
 }
