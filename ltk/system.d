@@ -9,19 +9,20 @@ module ltk.system;
 
 import core.stdc.string;
 
-// setenv() and unsetenv() are POSIX-specific.
+import std.exception;
+import std.conv;
+import std.string;
+
 version (Windows)
 {
     import core.sys.windows.windows;
     import std.utf;
     import std.windows.syserror;
 }
-version (Posix) import core.sys.posix.stdlib;
-else import core.stdc.stdlib;
 
-import std.exception;
-import std.conv;
-import std.string;
+version (Posix) import core.sys.posix.stdlib;
+
+
 
 
 // Some sources say this is supposed to be defined in unistd.h,
@@ -43,16 +44,6 @@ version(Windows)
         BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
     }
     enum ERROR_ENVVAR_NOT_FOUND = 203;
-}
-
-
-
-
-// Return the length of an environment variable (in number of
-// wchars, not including the null terminator), -1 if it doesn't exist.
-version(Windows) private int envVarLength(LPCWSTR namez)
-{
-    return (cast(int) GetEnvironmentVariableW(namez, null, 0)) - 1;
 }
 
 
@@ -148,13 +139,22 @@ void unsetEnv(string name)
     else static assert(0);
 }
 
-import std.stdio;
+
+
+
+// Return the length of an environment variable (in number of
+// wchars, not including the null terminator), -1 if it doesn't exist.
+version(Windows) private int envVarLength(LPCWSTR namez)
+{
+    return (cast(int) GetEnvironmentVariableW(namez, null, 0)) - 1;
+}
+
+
 // Unittest for getEnv(), setEnv(), and unsetEnv()
 unittest
 {
     // New variable
     setEnv("foo", "bar", true);
-    writeln(getEnv("foo"));
     assert (getEnv("foo") == "bar");
 
     // Overwrite variable
@@ -242,5 +242,5 @@ string[string] getEnv()
 unittest
 {
     auto env = getEnv();
-    assert (env["PATH"] == to!string(getenv("PATH")));
+    assert (env["PATH"] == getEnv("PATH"));
 }
