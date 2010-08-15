@@ -7,6 +7,7 @@
 module ltk.system;
 
 
+import core.exception: RangeError;
 import core.stdc.string;
 
 import std.exception;
@@ -20,7 +21,11 @@ version (Windows)
     import std.windows.syserror;
 }
 
-version (Posix) import core.sys.posix.stdlib;
+version (Posix)
+{
+    import core.stdc.errno;
+    import core.sys.posix.stdlib;
+}
 
 
 
@@ -38,7 +43,9 @@ version(Windows)
 {
     extern(Windows)
     {
-        LPTCH GetEnvironmentStrings();
+        alias WCHAR* LPWCH;
+        LPWCH GetEnvironmentStringsW();
+        BOOL FreeEnvironmentStringsW(LPWCH lpszEnvironmentBlock);
         DWORD GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lpBuffer,
             DWORD nSize);
         BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
@@ -49,198 +56,234 @@ version(Windows)
 
 
 
-/** Return the value of the environment variable with the given name.
-    Calls core.stdc.stdlib._getenv internally.
+// This struct provides an AA-like interface for reading/writing
+// environment variables.
+struct Environment
+{
+    // Return the length of an environment variable (in number of
+    // wchars, including the null terminator), 0 if it doesn't exist.
+    version(Windows)
+    static private int varLength(LPCWSTR namez)
+    {
+        return GetEnvironmentVariableW(namez, null, 0);
+    }
+
+
+
+    // Retrieve an environment variable, null if not found.
+    static string opIndex(string name)
+    {
+        version(Posix)
+        {
+            const valuez = getenv(toStringz(name));
+            if (valuez == null) return null;
+            auto value = valuez[0 .. strlen(valuez)];
+
+            // Cache the last call's result.
+            static string lastResult;
+            if (value == lastResult) return lastResult;
+            return lastResult = value.idup;
+        }
+
+        else version(Windows)
+        {
+            const namez = toUTF16z(name);
+            immutable len = varLength(namez);
+            if (len <= 1) return null;
+
+            auto buf = new WCHAR[len];
+            GetEnvironmentVariableW(namez, buf.ptr, buf.length);
+            return toUTF8(buf[0 .. $-1]);
+        }
+
+        else static assert(0);
+    }
+
+
+
+    // Assign a value to an environment variable.  If the variable
+    // exists, it is overwritten.
+    static string opIndexAssign(string value, string name)
+    {
+        version(Posix)
+        {
+            if (core.sys.posix.stdlib.setenv(toStringz(name),
+                toStringz(value), 1) != -1)
+            {
+                return value;
+            }
+
+            // The default errno error message is very uninformative
+            // in the most common case, so we handle it manually.
+            enforce(errno != EINVAL,
+                "Invalid environment variable name: '"~name~"'");
+            errnoEnforce(false,
+                "Failed to add environment variable");
+            assert(0);
+        }
+
+        else version(Windows)
+        {
+            enforce(
+                SetEnvironmentVariableW(toUTF16z(name), toUTF16z(value)),
+                sysErrorString(GetLastError())
+            );
+            return value;
+        }
+
+        else static assert(0);
+    }
+
+
+
+    // Remove an environment variable.  The function succeeds even
+    // if the variable isn't in the environment.
+    static void remove(string name)
+    {
+        version(Posix)
+        {
+            unsetenv(toStringz(name));
+        }
+
+        else version(Windows)
+        {
+            SetEnvironmentVariableW(toUTF16z(name), null);
+        }
+
+        else static assert(0);
+    }
+
+
+
+    // Same as opIndex, except return a default value if
+    // the variable doesn't exist.
+    static string get(string name, string defaultValue)
+    {
+        auto value = opIndex(name);
+        return value ? value : defaultValue;
+    }
+
+
+
+    // Return all environment variables in an associative array.
+    static string[string] toAA()
+    {
+        string[string] aa;
+
+        version(Posix)
+        {
+            const(char)* envDefz;
+            for (int i=0; (envDefz = environ[i]) != null; i++)
+            {
+                auto envDef = to!string(envDefz);
+                auto eqPos = envDef.indexOf('=');
+                if (eqPos == -1)  continue;
+
+                auto key = envDef[0 .. eqPos];
+                // In POSIX, environment variables may be defined more
+                // than once.  This is a security issue, which we avoid
+                // by checking whether the key already exists in the array.
+                // For more info:
+                // http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/environment-variables.html
+                if (key in aa)  continue;
+
+                aa[key] = envDef[eqPos+1 .. $];
+            }
+        }
+
+        else version(Windows)
+        {
+            auto envBlock = GetEnvironmentStringsW;
+            scope(exit) FreeEnvironmentStringsW(envBlock);
+
+            // Are there any variables at all?
+            if (envBlock == null || envBlock[0] == '\0') return aa;
+
+            string key = null;
+            int i = 0;
+            bool parsingKey = true;
+            for (int j=0; ; ++j)
+            {
+                if (envBlock[j] == '=' && parsingKey)
+                {
+                    key = toUTF8(envBlock[i .. j]);
+                    i = j+1;
+                    parsingKey = false;
+                }
+                else if (envBlock[j] == '\0')
+                {
+                    assert (!parsingKey && key.length > 0);
+                    aa[key] = toUTF8(envBlock[i .. j]);
+
+                    key = null;
+                    i = j+1;
+                    parsingKey = true;
+
+                    if (envBlock[i] == '\0') break; // End of environment block.
+                }
+            }
+        }
+
+        else static assert(0);
+
+        return aa;
+    }
+
+}
+
+
+
+
+/** Manipulates environment variables using an associative-array-like
+    interface.
+
+    Examples:
+    ---
+    // Read variable
+    auto path = environment["PATH"];
+
+    // Add/replace variable
+    environment["foo"] = "bar";
+
+    // Remove variable
+    environment.remove("foo");
+
+    // Return variable, providing a default value if variable doesn't exist
+    auto foo = environment.get("foo", "default foo value");
+
+    // Return an associative array of type string[string] containing
+    // all the environment variables.
+    auto aa = environment.toAA();
+    ---
 */
-string getEnv(string name)
-{
-    version(Posix)
-    {
-        // Cache the last call's result.
-        static string lastResult;
-
-        const valuez = getenv(toStringz(name));
-        if (valuez == null)  return null;
-        auto value = valuez[0 .. strlen(valuez)];
-        if (value == lastResult) return lastResult;
-
-        return lastResult = value.idup;
-    }
-
-    else version(Windows)
-    {
-        auto namez = toUTF16z(name);
-        auto len = envVarLength(namez);
-        if (len < 0) return null;
-
-        auto buf = new WCHAR[len+1];
-        GetEnvironmentVariableW(namez, buf.ptr, buf.length);
-        return toUTF8(buf[0 .. $-1]);
-    }
-
-    else static assert(false);
-}
+Environment environment;
 
 
-
-
-/** Set the _value of the environment variable name to value. */
-void setEnv(string name, string value, bool overwrite)
-{
-    version(Posix)
-    {
-        // errno message not very informative, hence not use errnoEnforce().
-        enforce(
-            setenv(toStringz(name), toStringz(value), overwrite) == 0,
-            "Invalid environment variable name '"~name~"'"
-        );
-    }
-
-    else version(Windows)
-    {
-        auto namez = toUTF16z(name);
-        if (!overwrite && envVarLength(namez) >= 0) return;
-
-        enforce(
-            SetEnvironmentVariableW(namez, toUTF16z(value)),
-            sysErrorString(GetLastError())
-        );
-    }
-
-    else static assert(0);
-}
-
-
-
-
-/** Remove the environment variable with the given name.
-    If the variable does not exist in the environment, this
-    function succeeds without changing the environment.
-*/
-void unsetEnv(string name)
-{
-    version(Posix)
-    {
-        enforce(
-            unsetenv(toStringz(name)) == 0,
-            "Invalid environment variable name '"~name~"'"
-        );
-    }
-
-    else version(Windows)
-    {
-        auto namez = toUTF16z(name);
-        if (envVarLength(namez) >= 0)  enforce(
-            SetEnvironmentVariableW(namez, null),
-            sysErrorString(GetLastError())
-        );
-    }
-
-    else static assert(0);
-}
-
-
-
-
-// Return the length of an environment variable (in number of
-// wchars, not including the null terminator), -1 if it doesn't exist.
-version(Windows) private int envVarLength(LPCWSTR namez)
-{
-    return (cast(int) GetEnvironmentVariableW(namez, null, 0)) - 1;
-}
-
-
-// Unittest for getEnv(), setEnv(), and unsetEnv()
 unittest
 {
     // New variable
-    setEnv("foo", "bar", true);
-    assert (getEnv("foo") == "bar");
+    environment["foo"] = "bar";
+    assert (environment["foo"] == "bar");
 
-    // Overwrite variable
-    setEnv("foo", "baz", true);
-    assert (getEnv("foo") == "baz");
+    // Set variable again
+    environment["foo"] = "baz";
+    assert (environment["foo"] == "baz");
 
-    // Do not overwrite variable
-    setEnv("foo", "bax", false);
-    assert (getEnv("foo") == "baz");
+    // Remove variable
+    environment.remove("foo");
+    assert (environment["foo"] == null);
 
-    // Unset variable
-    unsetEnv("foo");
-    assert (getEnv("foo") == null);
+    // Remove again, should succeed
+    environment.remove("foo");
 
-    // Unset variable again (should be a noop)
-    unsetEnv("foo");
+    // get() with default value
+    assert (environment.get("foo", "bar") == "bar");
 
-    // Check that exceptions are thrown when they should be.
-    try { setEnv("foo=bar", "baz", true); assert(false); } catch(Exception e) {}
-}
-
-
-
-
-/** Return an associative array containing (copies of) all the
-    process' environment variables.
-*/
-string[string] allEnv()
-{
-    string[string] envArray;
-
-    version(Posix)
+    // Convert to associative array
+    auto aa = environment.toAA();
+    foreach (n, v; aa)
     {
-        const(char)* envDefz;
-        for (int i=0; (envDefz = environ[i]) != null; i++)
-        {
-            auto envDef = to!string(envDefz);
-            auto eqPos = envDef.indexOf('=');
-            if (eqPos == -1)  continue;
-
-            auto key = envDef[0 .. eqPos];
-            // In POSIX, environment variables may be defined more than once.
-            // This is a security issue, which we avoid by checking whether the
-            // key already exists in the array.  For more info:
-            // http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/environment-variables.html
-            if (key in envArray)  continue;
-
-            envArray[key] = envDef[eqPos+1 .. $];
-        }
+        assert (v == environment[n]);
     }
-
-    else version(Windows)
-    {
-        auto envDefz = GetEnvironmentStrings;
-
-        string key = null;
-        int i = 0;
-        bool parsingKey = true;
-        for (int j=0; ; ++j)
-        {
-            if (envDefz[j] == '=' && parsingKey)
-            {
-                key = envDefz[i .. j].idup;
-                i = j+1;
-                parsingKey = false;
-            }
-            else if (envDefz[j] == '\0')
-            {
-                assert (!parsingKey && key.length > 0);
-                envArray[key] = envDefz[i .. j].idup;
-
-                key = null;
-                i = j+1;
-                parsingKey = true;
-
-                if (envDefz[i] == '\0') break; // End of environment block.
-            }
-        }
-    }
-
-    return envArray;
 }
 
-
-unittest
-{
-    auto env = allEnv();
-    assert (env["PATH"] == getEnv("PATH"));
-}
