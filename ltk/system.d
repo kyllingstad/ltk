@@ -164,169 +164,54 @@ static:
 
 
 
-    // A range that iterates over all environment variables.
-    // This is not a forward range, because the Windows version
-    // needs to free the environment block when it's done with it.
-    version(Posix) struct Range
-    {
-    private:
-        int index;
-        bool initialised = false;
-
-        // For caching value of front
-        int frontIndex = -1;
-        Tuple!(string, "name", string, "value") frontValue;
-
-
-    public:
-        static Range opCall()
-        {
-            Range er;
-            er.initialised = true;
-            return er;
-        }
-
-
-        @property bool empty()
-        {
-            assert (initialised, typeof(this).stringof
-                ~ " must be constructed with static opCall()");
-            return environ[index] == null;
-        }
-
-
-        @property front()
-        {
-            if (index == frontIndex) return frontValue;
-            enforce(!empty, "Attempted to read front of empty range.");
-
-            immutable varDef = to!string(environ[index]);
-            immutable eq = varDef.indexOf('=');
-            assert (eq >= 0);
-            
-            frontValue.name = varDef[0 .. eq];
-            frontValue.value = varDef[eq+1 .. $];
-            frontIndex = index;
-
-            return frontValue;
-        }
-
-
-        void popFront()
-        {
-            enforce(!empty, "Called popFront() on empty range.");
-            ++index;
-        }
-    }
-
-
-    version(Windows) struct Range
-    {
-    private:
-        LPWCH envBlock;
-        int index;
-        bool _empty = true;
-        Tuple!(string, "name", string, "value") _front;
-        bool initialised = false;
-
-
-    public:
-        static Range opCall()
-        {
-            Range er;
-            er.initialised = true;
-            er.envBlock = GetEnvironmentStringsW();
-
-            if (er.envBlock != null)
-            {
-                er._empty = false;
-                er.popFront();
-            }
-
-            return er;
-        }
-
-
-        ~this()
-        {
-            if (envBlock != null) FreeEnvironmentStringsW(envBlock);
-        }
-
-
-        @property bool empty()
-        {
-            assert (initialised, typeof(this).stringof
-                ~ " must be constructed with static opCall()");
-            return _empty;
-        }
-
-
-        @property front()
-        {
-            enforce(!empty, "Attempted to read front of empty range.");
-            return _front;
-        }
-
-
-        void popFront()
-        {
-            if (envBlock[index] == '\0')
-            {
-                _empty = true;
-                return;
-            }
-
-            enforce(!empty, "Called popFront() on empty range.");
-
-            auto start = index;
-            while (envBlock[index] != '=') ++index;
-            _front.name = toUTF8(envBlock[start .. index]);
-
-            start = index+1;
-            while (envBlock[index] != '\0') ++index;
-            _front.value = toUTF8(envBlock[start .. index]);
-
-            ++index;
-        }
-    }
-
-
-    // A range that iterates over all elements
-    Range opSlice() { return Range(); }
-
-
-    // Iterate by key or value
-    struct Only(string what) if (what == "name" || what == "value")
-    {
-        private Range er;
-        static Only opCall() { Only o; o.er = Range(); return o; }
-        @property bool empty() { return er.empty; }
-        @property string front() { return mixin("er.front."~what); }
-        void popFront() { er.popFront(); }
-    }
-
-    Only!"name" byName() { return Only!"name"(); }
-    Only!"value" byValue() { return Only!"value"(); }
-
-
-
     // Return all environment variables in an associative array.
     static string[string] toAA()
     {
         string[string] aa;
 
-        auto er = Range();
-        foreach (ev; er)
+        version(Posix)
         {
-            // In POSIX, environment variables may be defined more
-            // than once.  This is a security issue, which we avoid
-            // by checking whether the key already exists in the array.
-            // For more info:
-            // http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/environment-variables.html
-            version(Posix)  if (ev.name in aa)  continue;
+            for (int i=0; environ[i] != null; ++i)
+            {
+                immutable varDef = to!string(environ[i]);
+                immutable eq = varDef.indexOf('=');
+                assert (eq >= 0);
+                
+                immutable name = varDef[0 .. eq];
+                immutable value = varDef[eq+1 .. $];
 
-            aa[ev.name] = ev.value;
+                // In POSIX, environment variables may be defined more
+                // than once.  This is a security issue, which we avoid
+                // by checking whether the key already exists in the array.
+                // For more info:
+                // http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/environment-variables.html
+                if (name !in aa)  aa[name] = value;
+            }
         }
+
+        else version(Windows)
+        {
+            auto envBlock = GetEnvironmentStringsW();
+            enforce (envBlock, "Failed to retrieve environment variables.");
+            scope(exit) FreeEnvironmentStringsW(envBlock);
+
+            for (int i=0; envBlock[i] != '\0'; ++i)
+            {
+                auto start = i;
+                while (envBlock[i] != '=')
+                {
+                    assert (envBlock[i] != '\0');
+                    ++i;
+                }
+                immutable name = toUTF8(envBlock[start .. i]);
+
+                start = i+1;
+                while (envBlock[i] != '\0') ++i;
+                aa[name] = toUTF8(envBlock[start .. i]);
+            }
+        }
+
+        else static assert(0);
 
         return aa;
     }
