@@ -7,12 +7,12 @@
 module ltk.system;
 
 
-import core.exception: RangeError;
 import core.stdc.string;
 
 import std.exception;
 import std.conv;
 import std.string;
+import std.typecons;
 
 version (Windows)
 {
@@ -30,10 +30,9 @@ version (Posix)
 
 
 
-// Some sources say this is supposed to be defined in unistd.h,
-// but the POSIX spec doesn't mention it:
 version(Posix)
 {
+    // Made available by the C runtime:
     private extern(C) extern __gshared const char** environ;
 }
 
@@ -50,7 +49,6 @@ version(Windows)
             DWORD nSize);
         BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
     }
-    enum ERROR_ENVVAR_NOT_FOUND = 203;
 }
 
 
@@ -60,10 +58,11 @@ version(Windows)
 // environment variables.
 struct Environment
 {
+static:
     // Return the length of an environment variable (in number of
     // wchars, including the null terminator), 0 if it doesn't exist.
     version(Windows)
-    static private int varLength(LPCWSTR namez)
+    private int varLength(LPCWSTR namez)
     {
         return GetEnvironmentVariableW(namez, null, 0);
     }
@@ -71,11 +70,11 @@ struct Environment
 
 
     // Retrieve an environment variable, null if not found.
-    static string opIndex(string name)
+    string opIndex(string name)
     {
         version(Posix)
         {
-            const valuez = getenv(toStringz(name));
+            const valuez = core.sys.posix.stdlib.getenv(toStringz(name));
             if (valuez == null) return null;
             auto value = valuez[0 .. strlen(valuez)];
 
@@ -103,7 +102,7 @@ struct Environment
 
     // Assign a value to an environment variable.  If the variable
     // exists, it is overwritten.
-    static string opIndexAssign(string value, string name)
+    string opIndexAssign(string value, string name)
     {
         version(Posix)
         {
@@ -138,11 +137,11 @@ struct Environment
 
     // Remove an environment variable.  The function succeeds even
     // if the variable isn't in the environment.
-    static void remove(string name)
+    void remove(string name)
     {
         version(Posix)
         {
-            unsetenv(toStringz(name));
+            core.sys.posix.stdlib.unsetenv(toStringz(name));
         }
 
         else version(Windows)
@@ -157,11 +156,157 @@ struct Environment
 
     // Same as opIndex, except return a default value if
     // the variable doesn't exist.
-    static string get(string name, string defaultValue)
+    string get(string name, string defaultValue)
     {
         auto value = opIndex(name);
         return value ? value : defaultValue;
     }
+
+
+
+    // A range that iterates over all environment variables.
+    // This is not a forward range, because the Windows version
+    // needs to free the environment block when it's done with it.
+    version(Posix) struct Range
+    {
+    private:
+        int index;
+        bool initialised = false;
+
+        // For caching value of front
+        int frontIndex = -1;
+        Tuple!(string, "name", string, "value") frontValue;
+
+
+    public:
+        static Range opCall()
+        {
+            Range er;
+            er.initialised = true;
+            return er;
+        }
+
+
+        @property bool empty()
+        {
+            assert (initialised, typeof(this).stringof
+                ~ " must be constructed with static opCall()");
+            return environ[index] == null;
+        }
+
+
+        @property front()
+        {
+            if (index == frontIndex) return frontValue;
+            enforce(!empty, "Attempted to read front of empty range.");
+
+            immutable varDef = to!string(environ[index]);
+            immutable eq = varDef.indexOf('=');
+            assert (eq >= 0);
+            
+            frontValue.name = varDef[0 .. eq];
+            frontValue.value = varDef[eq+1 .. $];
+            frontIndex = index;
+
+            return frontValue;
+        }
+
+
+        void popFront()
+        {
+            enforce(!empty, "Called popFront() on empty range.");
+            ++index;
+        }
+    }
+
+
+    version(Windows) struct Range
+    {
+    private:
+        LPWCH envBlock;
+        int index;
+        bool _empty = true;
+        Tuple!(string, "name", string, "value") _front;
+        bool initialised = false;
+
+
+    public:
+        static Range opCall()
+        {
+            Range er;
+            er.initialised = true;
+            er.envBlock = GetEnvironmentStringsW();
+
+            if (er.envBlock != null)
+            {
+                er._empty = false;
+                er.popFront();
+            }
+
+            return er;
+        }
+
+
+        ~this()
+        {
+            if (envBlock != null) FreeEnvironmentStringsW(envBlock);
+        }
+
+
+        @property bool empty()
+        {
+            assert (initialised, typeof(this).stringof
+                ~ " must be constructed with static opCall()");
+            return _empty;
+        }
+
+
+        @property front()
+        {
+            enforce(!empty, "Attempted to read front of empty range.");
+            return _front;
+        }
+
+
+        void popFront()
+        {
+            if (envBlock[index] == '\0')
+            {
+                _empty = true;
+                return;
+            }
+
+            enforce(!empty, "Called popFront() on empty range.");
+
+            auto start = index;
+            while (envBlock[index] != '=') ++index;
+            _front.name = toUTF8(envBlock[start .. index]);
+
+            start = index+1;
+            while (envBlock[index] != '\0') ++index;
+            _front.value = toUTF8(envBlock[start .. index]);
+
+            ++index;
+        }
+    }
+
+
+    // A range that iterates over all elements
+    Range opSlice() { return Range(); }
+
+
+    // Iterate by key or value
+    struct Only(string what) if (what == "name" || what == "value")
+    {
+        private Range er;
+        static Only opCall() { Only o; o.er = Range(); return o; }
+        @property bool empty() { return er.empty; }
+        @property string front() { return mixin("er.front."~what); }
+        void popFront() { er.popFront(); }
+    }
+
+    Only!"name" byName() { return Only!"name"(); }
+    Only!"value" byValue() { return Only!"value"(); }
 
 
 
@@ -170,61 +315,18 @@ struct Environment
     {
         string[string] aa;
 
-        version(Posix)
+        auto er = Range();
+        foreach (ev; er)
         {
-            const(char)* envDefz;
-            for (int i=0; (envDefz = environ[i]) != null; i++)
-            {
-                auto envDef = to!string(envDefz);
-                auto eqPos = envDef.indexOf('=');
-                if (eqPos == -1)  continue;
+            // In POSIX, environment variables may be defined more
+            // than once.  This is a security issue, which we avoid
+            // by checking whether the key already exists in the array.
+            // For more info:
+            // http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/environment-variables.html
+            version(Posix)  if (ev.name in aa)  continue;
 
-                auto key = envDef[0 .. eqPos];
-                // In POSIX, environment variables may be defined more
-                // than once.  This is a security issue, which we avoid
-                // by checking whether the key already exists in the array.
-                // For more info:
-                // http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/environment-variables.html
-                if (key in aa)  continue;
-
-                aa[key] = envDef[eqPos+1 .. $];
-            }
+            aa[ev.name] = ev.value;
         }
-
-        else version(Windows)
-        {
-            auto envBlock = GetEnvironmentStringsW;
-            scope(exit) FreeEnvironmentStringsW(envBlock);
-
-            // Are there any variables at all?
-            if (envBlock == null || envBlock[0] == '\0') return aa;
-
-            string key = null;
-            int i = 0;
-            bool parsingKey = true;
-            for (int j=0; ; ++j)
-            {
-                if (envBlock[j] == '=' && parsingKey)
-                {
-                    key = toUTF8(envBlock[i .. j]);
-                    i = j+1;
-                    parsingKey = false;
-                }
-                else if (envBlock[j] == '\0')
-                {
-                    assert (!parsingKey && key.length > 0);
-                    aa[key] = toUTF8(envBlock[i .. j]);
-
-                    key = null;
-                    i = j+1;
-                    parsingKey = true;
-
-                    if (envBlock[i] == '\0') break; // End of environment block.
-                }
-            }
-        }
-
-        else static assert(0);
 
         return aa;
     }
@@ -251,39 +353,52 @@ struct Environment
     // Return variable, providing a default value if variable doesn't exist
     auto foo = environment.get("foo", "default foo value");
 
+    // Iterate over all environment variable names and values
+    foreach (var; environment[]) writefln("%s=%s", var.name, var.value);
+
+    // Iterate over variable names and values separately
+    foreach (name; environment.byName())   writeln(name);
+    foreach (value; environment.byValue()) writeln(value);
+
     // Return an associative array of type string[string] containing
     // all the environment variables.
     auto aa = environment.toAA();
     ---
 */
-Environment environment;
+//Environment environment;
+alias Environment environment;
 
 
 unittest
 {
     // New variable
-    environment["foo"] = "bar";
-    assert (environment["foo"] == "bar");
+    environment["std_process"] = "foo";
+    assert (environment["std_process"] == "foo");
 
     // Set variable again
-    environment["foo"] = "baz";
-    assert (environment["foo"] == "baz");
+    environment["std_process"] = "bar";
+    assert (environment["std_process"] == "bar");
 
     // Remove variable
-    environment.remove("foo");
-    assert (environment["foo"] == null);
+    environment.remove("std_process");
+    assert (environment["std_process"] == null);
 
     // Remove again, should succeed
-    environment.remove("foo");
+    environment.remove("std_process");
 
     // get() with default value
-    assert (environment.get("foo", "bar") == "bar");
+    assert (environment.get("std_process", "baz") == "baz");
 
-    // Convert to associative array
+    // Convert to associative array. Also tests ranges.
     auto aa = environment.toAA();
+    assert (aa.length > 0);
     foreach (n, v; aa)
     {
+        // Due to what seems to be a bug in the Wine cmd shell,
+        // sometimes there is an environment variable with an empty
+        // name, which GetEnvironmentVariable() refuses to retrieve.
+        version(Windows)  if (n.length == 0) continue;
+
         assert (v == environment[n]);
     }
 }
-
