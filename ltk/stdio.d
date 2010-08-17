@@ -13,7 +13,7 @@ import core.sys.posix.unistd;
 
 import std.array;
 import std.conv;
-import std.contracts;
+import std.exception;
 import std.string;
 import std.stdio;
 import std.traits;
