@@ -378,6 +378,7 @@ public:
     /** Return a std.stdio.File pointing to the same file. */
     File buffered(bool autoClose = false) const
     {
+        /+
         // TODO: Using the internals of File like this feels like a hack,
         // but the File.wrapFile() function disables automatic closing of
         // the file.  Perhaps there should be a protected version of
@@ -390,6 +391,13 @@ public:
             p.name);
 
         return f;
+        +/
+
+        // The File implementation pointer has been made private,
+        // so we can't use the above anymore.  Note that the
+        // File we return now never gets closed.
+        return File.wrapFile(
+            errnoEnforce(fdopen(p.fileDescriptor, toStringz(p.mode))));
     }
 
 
