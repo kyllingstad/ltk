@@ -8,11 +8,13 @@
 module ltk.path;
 
 
-import std.contracts;
+import std.conv;
 import std.ctype;
+import std.exception;
 import std.file;
 import std.path;
 import std.string;
+import std.traits;
 
 
 
@@ -152,17 +154,17 @@ inout(char[]) basename(inout char[] path, in char[] suffix=null)
 
 unittest
 {
-    assert (basename("file.ext") == "file.ext");
-    assert (basename("file.ext", ".ext") == "file");
-    assert (basename("dir/file.ext") == "file.ext");
-    assert (basename("dir/file.ext", ".ext") == "file");
-    assert (basename("dir/subdir/") == "subdir", basename("dir/subdir/"));
-    assert (basename("/") == "/");
+    assert (basename("file.ext")                == "file.ext");
+    assert (basename("file.ext", ".ext")        == "file");
+    assert (basename("dir/file.ext")            == "file.ext");
+    assert (basename("dir/file.ext", ".ext")    == "file");
+    assert (basename("dir/subdir/")             == "subdir");
+    assert (basename("/")                       == "/");
 
     version (Windows)
     {
-    assert (basename("dir\\file.ext") == "file.ext");
-    assert (basename("dir\\file.ext", ".ext") == "file");
+    assert (basename("dir\\file.ext")           == "file.ext");
+    assert (basename("dir\\file.ext", ".ext")   == "file");
     assert (basename("d:file.ext") == "file.ext");
     assert (basename("d:file.ext", ".ext") == "file");
     assert (basename("dir\\subdir\\") == "subdir");
@@ -193,8 +195,9 @@ unittest
     dirname(r"dir\subdir\")     -->  "dir"
     ---
 */
-inout(char[]) dirname(inout char[] path)
+String dirname(String)(String path)  if (isSomeString!String)
 {
+    if (path.length == 0) return to!String(".");
     auto p = chompDirSeparators(path);
 
     // If this is the root directory, return one of the
@@ -202,8 +205,8 @@ inout(char[]) dirname(inout char[] path)
     if (p.length == 0) return path[0 .. 1];
 
     int i = lastSeparator(p);
-    if (i == -1) return cast(typeof(return)) ".";   // No dir
-    if (i == 0) return p[0 .. i+1];                 // Root dir
+    if (i == -1) return to!String(".");     // No dir
+    if (i == 0) return p[0 .. 1];           // Root dir
 
     // If the directory part is either d: or d:\, don't
     // chop off the last symbol.
@@ -219,21 +222,22 @@ inout(char[]) dirname(inout char[] path)
 
 unittest
 {
-    assert (dirname("file") == ".");
-    assert (dirname("dir/") == ".");
-    assert (dirname("dir/file") == "dir");
-    assert (dirname("dir///file") == "dir");
-    assert (dirname("/file") == "/");
-    assert (dirname("dir/subdir/") == "dir");
+    assert (dirname("")                 == ".");
+    assert (dirname("file")             == ".");
+    assert (dirname("dir/")             == ".");
+    assert (dirname("dir/file")         == "dir");
+    assert (dirname("dir///file")       == "dir");
+    assert (dirname("/file")            == "/");
+    assert (dirname("dir/subdir/")      == "dir");
 
     version (Windows)
     {
-    assert (dirname("dir\\") == ".");
-    assert (dirname("dir\\file") == "dir");
-    assert (dirname("dir\\\\\\file") == "dir");
-    assert (dirname("d:file") == "d:");
-    assert (dirname("d:\\file") == "d:\\");
-    assert (dirname("dir\\subdir\\") == "dir");
+    assert (dirname("dir\\")            == ".");
+    assert (dirname("dir\\file")        == "dir");
+    assert (dirname("dir\\\\\\file")    == "dir");
+    assert (dirname("d:file")           == "d:");
+    assert (dirname("d:\\file")         == "d:\\");
+    assert (dirname("dir\\subdir\\")    == "dir");
     }
 }
 
