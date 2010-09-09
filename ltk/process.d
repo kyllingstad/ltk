@@ -93,7 +93,7 @@ else version(Windows)
     // Use the same spawnProcess() implementations on both Windows
     // and POSIX, only the spawnProcessImpl() function has to be
     // different.
-    const char** environ = null;
+    LPVOID environ = null;
 
     // For the 'shell' commands:
     private immutable string shellSwitch = "/C";
