@@ -122,33 +122,73 @@ else version(Windows)
 class Pid
 {
 private:
-    // Special values for _pid.
+
+    // Special values for _processID.
     enum invalid = -1, terminated = -2;
 
     // OS process ID number.  Only nonnegative IDs correspond to
     // running processes.
-    int _pid = invalid;
+    int _processID = invalid;
+
 
     // Exit code cached by wait().  This is only expected to hold a
-    // sensible value if _pid == terminated.
+    // sensible value if _processID == terminated.
     int _exitCode;
+
 
     // Pids are only meant to be constructed inside this module, so
     // we make the constructor private.
-    this(int pid)
+    this(int id)
     {
-        _pid = pid;
+        _processID = id;
     }
 
 
+    // Implementation of wait().  For the time being, one should still
+    // call it through the module-level wait() function.
+    version(Posix) int wait()
+    {
+        if (_processID == terminated) return _exitCode;
+
+        int exitCode;
+        while(true)
+        {
+            int status;
+            auto check = waitpid(processID, &status, 0);
+            enforce (check != -1  ||  errno != ECHILD,
+                "Process does not exist or is not a child process.");
+
+            if (WIFEXITED(status))
+            {
+                exitCode = WEXITSTATUS(status);
+                break;
+            }
+            else if (WIFSIGNALED(status))
+            {
+                exitCode = -WTERMSIG(status);
+                break;
+            }
+            // Process has stopped, but not terminated, so we continue waiting.
+        }
+
+        // Mark Pid as terminated, and cache and return exit code.
+        _processID = terminated;
+        _exitCode = exitCode;
+        return exitCode;
+    }
+
+
+
 public:
+
     /** The ID number assigned to the process by the operating
         system.
     */
     @property int processID() const
     {
-        enforce(_pid >= 0, "Pid doesn't correspond to a running process.");
-        return _pid;
+        enforce(_processID >= 0,
+            "Pid doesn't correspond to a running process.");
+        return _processID;
     }
 }
 
@@ -467,38 +507,10 @@ enum Config
     is the signal number.  (POSIX restricts normal exit codes
     to the range 0-255.)
 */
-version (Posix) int wait(Pid pid)
+int wait(Pid pid)
 {
     enforce(pid !is null, "Called wait on a null Pid.");
-
-    if (pid._pid == Pid.terminated) return pid._exitCode;
-
-    int exitCode;
-    while(true)
-    {
-        int status;
-        auto check = waitpid(pid.processID, &status, 0);
-        enforce (check != -1  ||  errno != ECHILD,
-            "Process does not exist or is not a child process.");
-
-        if (WIFEXITED(status))
-        {
-            exitCode = WEXITSTATUS(status);
-            break;
-        }
-        else if (WIFSIGNALED(status))
-        {
-            exitCode = -WTERMSIG(status);
-            break;
-        }
-        // Process has stopped, but not terminated, so we continue waiting.
-    }
-
-    // Invalidate Pid and cache exit code.
-    pid._pid = Pid.terminated;
-    pid._exitCode = exitCode;
-
-    return exitCode;
+    return pid.wait();
 }
 
 
