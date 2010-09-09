@@ -140,8 +140,21 @@ private:
     }
 
 
-    // Implementation of wait().  For the time being, one should still
-    // call it through the module-level wait() function.
+
+public:
+
+    /** The ID number assigned to the process by the operating
+        system.
+    */
+    @property int processID() const
+    {
+        enforce(_processID >= 0,
+            "Pid doesn't correspond to a running process.");
+        return _processID;
+    }
+
+
+    // See module-level wait() for documentation.
     version(Posix) int wait()
     {
         if (_processID == terminated) return _exitCode;
@@ -171,20 +184,6 @@ private:
         _processID = terminated;
         _exitCode = exitCode;
         return exitCode;
-    }
-
-
-
-public:
-
-    /** The ID number assigned to the process by the operating
-        system.
-    */
-    @property int processID() const
-    {
-        enforce(_processID >= 0,
-            "Pid doesn't correspond to a running process.");
-        return _processID;
     }
 }
 
