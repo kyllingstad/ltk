@@ -9,27 +9,6 @@ module ltk.array;
 
 
 
-/** If the key exists in the associative array, its corresponding value
-    is returned. If not, the given default is returned.
-*/
-T getElement(T, U)(T[U] array, U key, T dflt=T.init)
-{
-    T* keyptr = key in array;
-    if (keyptr != null)  return *keyptr;
-    else  return dflt;
-}
-
-unittest
-{
-    int[string] a;
-    a["foo"] = 123;
-    assert (a.getElement("foo", 456) == 123);
-    assert (a.getElement("bar", 456) == 456);
-    assert (a.getElement("bar") == int.init);
-}
-
-
-
 /** Combine several associative arrays. The arrays are processed in the
     order they are given, and if a key exists in two or more arrays, the
     first one takes precedence.
