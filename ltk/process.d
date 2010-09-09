@@ -82,10 +82,6 @@ import ltk.stdio;
 
 version(Posix)
 {
-    // DMD BUG 3604
-    // Until this is fixed, we declare posix.unistd.pipe() here:
-    extern(C) int pipe(int[2]*);
-
     // Made available by the C runtime:
     extern(C) extern __gshared const char** environ;
 
@@ -548,7 +544,7 @@ public:
     version(Posix) static Pipe create(bool autoClose=true)
     {
         int[2] fds;
-        errnoEnforce(pipe(&fds) == 0, "Unable to create pipe");
+        errnoEnforce(pipe(fds) == 0, "Unable to create pipe");
 
         Pipe p;
         p._read  =
