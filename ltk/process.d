@@ -115,7 +115,7 @@ else version(Windows)
 
 
 /** A handle corresponding to a spawned process. */
-class Pid
+final class Pid
 {
 private:
 
