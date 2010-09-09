@@ -1,4 +1,7 @@
-/** This module is used to parse file names. All the operations work
+/** Proposal for a rewrite of
+    $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_path.html,std._path).
+
+    This module is used to parse file names. All the operations work
     only on strings; they don't perform any input/output operations.
     This means that if a path contains a directory name with a dot,
     functions like extension() will work with it just as if it was a file.

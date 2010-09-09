@@ -1,4 +1,6 @@
-/** Facilities for executing processes.
+/** This is a proposal for a replacement for the
+    $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_process.html,std._process)
+    Phobos module.
 
     This is a summary of the functions in this module:
     $(UL $(LI
@@ -728,6 +730,10 @@ public:
     This function blocks until the program returns, and returns
     its exit code and output (what it writes to its
     standard output $(I and) error streams).
+    ---
+    auto dmd = execute("dmd myapp.d");
+    if (dmd.status != 0) writeln("Compilation failed:\n", dmd.output);
+    ---
 */
 Tuple!(int, "status", string, "output") execute(string command)
 {
@@ -767,7 +773,7 @@ Tuple!(int, "status", string, "output") execute(string name, string[] args)
     its exit code and output (what the process writes to its
     standard output $(I and) error streams).
     ---
-    auto ls = shell("ls -l", myFiles);
+    auto ls = shell("ls -l");
     writefln("ls exited with code %s and said: %s", ls.status, ls.output);
     ---
 */
@@ -806,48 +812,89 @@ version(Windows) @property int thisProcessID()
 
 
 
-// This struct provides an AA-like interface for reading/writing
-// environment variables.
-final abstract class Environment
+
+/** Manipulates environment variables using an associative-array-like
+    interface.
+
+    Examples:
+    ---
+    // Return variable, or throw an exception if it doesn't exist.
+    auto path = environment["PATH"];
+
+    // Add/replace variable.
+    environment["foo"] = "bar";
+
+    // Remove variable.
+    environment.remove("foo");
+
+    // Return variable, or null if it doesn't exist.
+    auto foo = environment.get("foo");
+
+    // Return variable, or a default value if it doesn't exist.
+    auto foo = environment.get("foo", "default foo value");
+
+    // Return an associative array of type string[string] containing
+    // all the environment variables.
+    auto aa = environment.toAA();
+    ---
+*/
+alias Environment environment;
+
+abstract final class Environment
 {
 static:
+
+private:
     // Return the length of an environment variable (in number of
     // wchars, including the null terminator), 0 if it doesn't exist.
     version(Windows)
-    private int varLength(LPCWSTR namez)
+    int varLength(LPCWSTR namez)
     {
         return GetEnvironmentVariableW(namez, null, 0);
     }
 
 
-
-    // Retrieve an environment variable, null if not found.
-    string opIndex(string name)
+    // Retrieve the environment variable, or return false on failure.
+    bool getImpl(string name, out string value)
     {
         version(Posix)
         {
-            const valuez = core.sys.posix.stdlib.getenv(toStringz(name));
-            if (valuez == null) return null;
-            auto value = valuez[0 .. strlen(valuez)];
+            const vz = core.sys.posix.stdlib.getenv(toStringz(name));
+            if (vz == null) return false;
+            auto v = vz[0 .. strlen(vz)];
 
             // Cache the last call's result.
             static string lastResult;
-            if (value == lastResult) return lastResult;
-            return lastResult = value.idup;
+            if (v != lastResult) lastResult = v.idup;
+            value = lastResult;
+            return true;
         }
 
         else version(Windows)
         {
             const namez = toUTF16z(name);
             immutable len = varLength(namez);
-            if (len <= 1) return null;
+            if (len == 0) return false;
+            if (len == 1) return true;
 
             auto buf = new WCHAR[len];
             GetEnvironmentVariableW(namez, buf.ptr, buf.length);
-            return toUTF8(buf[0 .. $-1]);
+            value = toUTF8(buf[0 .. $-1]);
+            return true;
         }
 
         else static assert(0);
+    }
+
+
+
+public:
+    // Retrieve an environment variable, throw on failure.
+    string opIndex(string name)
+    {
+        string value;
+        enforce(getImpl(name, value), "Environment variable not found: "~name);
+        return value;
     }
 
 
@@ -908,16 +955,17 @@ static:
 
     // Same as opIndex, except return a default value if
     // the variable doesn't exist.
-    string get(string name, string defaultValue)
+    string get(string name, string defaultValue = null)
     {
-        auto value = opIndex(name);
-        return value ? value : defaultValue;
+        string value;
+        auto found = getImpl(name, value);
+        return found ? value : defaultValue;
     }
 
 
 
     // Return all environment variables in an associative array.
-    static string[string] toAA()
+    string[string] toAA()
     {
         string[string] aa;
 
@@ -928,7 +976,7 @@ static:
                 immutable varDef = to!string(environ[i]);
                 immutable eq = std.string.indexOf(varDef, '=');
                 assert (eq >= 0);
-                
+
                 immutable name = varDef[0 .. eq];
                 immutable value = varDef[eq+1 .. $];
 
@@ -971,41 +1019,6 @@ static:
 }
 
 
-
-
-/** Manipulates environment variables using an associative-array-like
-    interface.
-
-    Examples:
-    ---
-    // Read variable
-    auto path = environment["PATH"];
-
-    // Add/replace variable
-    environment["foo"] = "bar";
-
-    // Remove variable
-    environment.remove("foo");
-
-    // Return variable, providing a default value if variable doesn't exist
-    auto foo = environment.get("foo", "default foo value");
-
-    // Iterate over all environment variable names and values
-    foreach (var; environment[]) writefln("%s=%s", var.name, var.value);
-
-    // Iterate over variable names and values separately
-    foreach (name; environment.byName())   writeln(name);
-    foreach (value; environment.byValue()) writeln(value);
-
-    // Return an associative array of type string[string] containing
-    // all the environment variables.
-    auto aa = environment.toAA();
-    ---
-*/
-//Environment environment;
-alias Environment environment;
-
-
 unittest
 {
     // New variable
@@ -1018,15 +1031,20 @@ unittest
 
     // Remove variable
     environment.remove("std_process");
-    assert (environment["std_process"] == null);
 
     // Remove again, should succeed
     environment.remove("std_process");
 
+    // Throw on not found.
+    try { environment["std_process"]; assert(0); } catch(Exception e) { }
+
+    // get() without default value
+    assert (environment.get("std.process") == null);
+
     // get() with default value
     assert (environment.get("std_process", "baz") == "baz");
 
-    // Convert to associative array. Also tests ranges.
+    // Convert to associative array
     auto aa = environment.toAA();
     assert (aa.length > 0);
     foreach (n, v; aa)

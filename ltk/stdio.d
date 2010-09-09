@@ -1,4 +1,5 @@
-/** I/O stuff.
+/** Proposal for additions to
+    $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_stdio.html,std._stdio).
 
     Authors:    Lars Tandle Kyllingstad
     Copyright:  Copyright (c) 2010, Lars T. Kyllingstad. All rights reserved.
