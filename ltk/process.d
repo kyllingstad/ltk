@@ -119,21 +119,35 @@ else version(Windows)
 
 
 /** A handle corresponding to a spawned process. */
-struct Pid
+class Pid
 {
 private:
-    // Process ID number, assigned by the OS.
-    int _pid = -1;
+    // Special values for _pid.
+    enum invalid = -1, terminated = -2;
+
+    // OS process ID number.  Only nonnegative IDs correspond to
+    // running processes.
+    int _pid = invalid;
+
+    // Exit code cached by wait().  This is only expected to hold a
+    // sensible value if _pid == terminated.
+    int _exitCode;
+
+    // Pids are only meant to be constructed inside this module, so
+    // we make the constructor private.
+    this(int pid)
+    {
+        _pid = pid;
+    }
 
 
 public:
-
     /** The ID number assigned to the process by the operating
         system.
     */
     @property int processID() const
     {
-        enforce(_pid > 0, "Pid not initialized.");
+        enforce(_pid >= 0, "Pid doesn't correspond to a running process.");
         return _pid;
     }
 }
@@ -307,11 +321,10 @@ version(Posix) private Pid spawnProcessImpl
     auto stdoutFD  = stdout_.fileDescriptor;
     auto stderrFD  = stderr_.fileDescriptor;
 
-    Pid pid;
-    pid._pid = fork();
-    errnoEnforce (pid._pid >= 0, "Cannot spawn new process");
+    auto id = fork();
+    errnoEnforce (id >= 0, "Cannot spawn new process");
 
-    if (pid._pid == 0)
+    if (id == 0)
     {
         // Child process
 
@@ -352,7 +365,7 @@ version(Posix) private Pid spawnProcessImpl
                 stderr_.close();
         }
 
-        return pid;
+        return new Pid(id);
     }
 }
 
@@ -456,6 +469,11 @@ enum Config
 */
 version (Posix) int wait(Pid pid)
 {
+    enforce(pid !is null, "Called wait on a null Pid.");
+
+    if (pid._pid == Pid.terminated) return pid._exitCode;
+
+    int exitCode;
     while(true)
     {
         int status;
@@ -463,10 +481,24 @@ version (Posix) int wait(Pid pid)
         enforce (check != -1  ||  errno != ECHILD,
             "Process does not exist or is not a child process.");
 
-        if (WIFEXITED(status))          return WEXITSTATUS(status);
-        else if (WIFSIGNALED(status))   return -WTERMSIG(status);
+        if (WIFEXITED(status))
+        {
+            exitCode = WEXITSTATUS(status);
+            break;
+        }
+        else if (WIFSIGNALED(status))
+        {
+            exitCode = -WTERMSIG(status);
+            break;
+        }
         // Process has stopped, but not terminated, so we continue waiting.
     }
+
+    // Invalidate Pid and cache exit code.
+    pid._pid = Pid.terminated;
+    pid._exitCode = exitCode;
+
+    return exitCode;
 }
 
 
@@ -690,7 +722,11 @@ private:
 
 public:
     /** Return the Pid of the child process. */
-    @property Pid pid() { return _pid; }
+    @property Pid pid()
+    {
+        enforce (_pid !is null);
+        return _pid;
+    }
 
 
     /** Return a File that allows writing to the child process'

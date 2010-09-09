@@ -53,7 +53,9 @@ void main()
     compile(q{
         int main() { return 123; }
     });
-    assert (wait(spawnProcess(exe)) == 123);
+    pid = spawnProcess(exe);
+    assert (wait(pid) == 123);
+    assert (wait(pid) == 123);  // Check that value is cached correctly
     ok();
 
 
