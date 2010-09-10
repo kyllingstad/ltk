@@ -84,9 +84,6 @@ version(Posix)
 {
     // Made available by the C runtime:
     extern(C) extern __gshared const char** environ;
-
-    // For the 'shell' commands:
-    private immutable string shellSwitch = "-c";
 }
 else version(Windows)
 {
@@ -94,10 +91,6 @@ else version(Windows)
     // and POSIX, only the spawnProcessImpl() function has to be
     // different.
     LPVOID environ = null;
-
-    // For the 'shell' commands:
-    private immutable string shellSwitch = "/C";
-
 
     // TODO: This should be in druntime!
     extern(Windows)
@@ -584,6 +577,9 @@ unittest
 
 
 
+// ============================== pipeProcess() ==============================
+
+
 /** Start a new process, and create pipes to redirect its standard
     input, output and/or error streams.  This function returns
     immediately, leaving the child process to execute in parallel
@@ -769,6 +765,9 @@ public:
 
 
 
+// ============================== execute() ==============================
+
+
 /** Execute the given program.
     This function blocks until the program returns, and returns
     its exit code and output (what it writes to its
@@ -811,19 +810,11 @@ Tuple!(int, "status", string, "output") execute(string name, string[] args)
 
 
 
-/** Execute command in the user's default _shell.
-    This function blocks until the _command returns, and returns
-    its exit code and output (what the process writes to its
-    standard output $(I and) error streams).
-    ---
-    auto ls = shell("ls -l");
-    writefln("ls exited with code %s and said: %s", ls.status, ls.output);
-    ---
-*/
-Tuple!(int, "status", string, "output") shell(string command)
-{
-    return execute(getShell(), [shellSwitch, command]);
-}
+// ============================== shell() ==============================
+
+
+version(Posix)   private immutable string shellSwitch = "-c";
+version(Windows) private immutable string shellSwitch = "/C";
 
 
 // Get the user's default shell.
@@ -840,6 +831,26 @@ version(Windows) private string getShell()
 
 
 
+/** Execute command in the user's default _shell.
+    This function blocks until the _command returns, and returns
+    its exit code and output (what the process writes to its
+    standard output $(I and) error streams).
+    ---
+    auto ls = shell("ls -l");
+    writefln("ls exited with code %s and said: %s", ls.status, ls.output);
+    ---
+*/
+Tuple!(int, "status", string, "output") shell(string command)
+{
+    return execute(getShell(), [shellSwitch, command]);
+}
+
+
+
+
+// ============================== thisProcessID ==============================
+
+
 /** Get the process ID number of the current process. */
 version(Posix) @property int thisProcessID()
 {
@@ -852,6 +863,9 @@ version(Windows) @property int thisProcessID()
 }
 
 
+
+
+// ============================== environment ==============================
 
 
 /** Manipulates environment variables using an associative-array-like
