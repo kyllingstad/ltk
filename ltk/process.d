@@ -829,9 +829,7 @@ Tuple!(int, "status", string, "output") shell(string command)
 // Get the user's default shell.
 version(Posix)  private string getShell()
 {
-    auto shellPathz = environment["SHELL"];
-    if (shellPathz == null)  return "/bin/sh";
-    return to!string(shellPathz);
+    return environment.get("SHELL", "/bin/sh");
 }
 
 version(Windows) private string getShell()

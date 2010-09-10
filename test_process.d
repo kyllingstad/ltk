@@ -146,6 +146,12 @@ void main()
     ok();
 
 
+    // Test 8: Test shell().
+    auto ret8 = shell("echo foo");
+    assert (ret8.status == 0  &&  ret8.output.chomp() == "foo");
+    ok();
+
+
 version (Posix)
 {
     // POSIX test 1: Terminate by signal.
