@@ -333,7 +333,7 @@ version(Posix) private Pid spawnProcessImpl
     Config config)
 {
     // Make sure the file exists and is executable.
-    if (name.indexOf(std.path.sep) == -1)
+    if (std.string.indexOf(name, std.path.sep) == -1)
     {
         name = searchPathFor(name);
         enforce(name != null, "Executable file not found: "~name);
@@ -902,8 +902,7 @@ static:
 private:
     // Return the length of an environment variable (in number of
     // wchars, including the null terminator), 0 if it doesn't exist.
-    version(Windows)
-    int varLength(LPCWSTR namez)
+    version(Windows) int varLength(LPCWSTR namez)
     {
         return GetEnvironmentVariableW(namez, null, 0);
     }
@@ -1094,7 +1093,7 @@ unittest
     try { environment["std_process"]; assert(0); } catch(Exception e) { }
 
     // get() without default value
-    assert (environment.get("std.process") == null);
+    assert (environment.get("std_process") == null);
 
     // get() with default value
     assert (environment.get("std_process", "baz") == "baz");
