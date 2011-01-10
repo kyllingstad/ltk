@@ -5,7 +5,7 @@ module unit;
 import std.stdio;
 import ltk.array;
 import ltk.filelock;
-//import ltk.path;
+import ltk.path;
 import ltk.posix.sys.un;
 import ltk.process;
 import ltk.stdio;

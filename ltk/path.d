@@ -154,7 +154,10 @@ inout(char[]) basename(inout char[] path, in char[] suffix=null)
     if (p.length == 0) return path[0 .. 1];
 
     auto i = lastSeparator(p);
-    return std.string.chomp(p[i+1 .. $], suffix);
+
+    // TODO: Figure out why the casts are needed here.
+    return cast(inout(char[]))
+        std.string.chomp(cast(const(char)[]) p[i+1 .. $], suffix);
 }
 
 
