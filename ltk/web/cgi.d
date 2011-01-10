@@ -2,12 +2,7 @@
     and it is recommended to use a named import:
     ---
     import CGI = ltk.web.cgi;
-
-    void main()
-    {
-        CGI.init();
-        ...
-    }
+    ---
 */
 module ltk.web.cgi;
 
