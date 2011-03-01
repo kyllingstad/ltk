@@ -79,9 +79,20 @@ private bool isDriveSeparator(char c)
 
 
 
+/*  Combines the isDirSeparator and isDriveSeparator tests. */
+version(Posix) alias isDirSeparator isSeparator;
+version(Windows) private bool isSeparator(char c)
+{
+    return isDirSeparator(c) || isDriveSeparator(c);
+}
+
+
+
+
 
 /*  Helper function that determines the position of the last
-    directory separator in a string.  Returns -1 if none is found.
+    drive/directory separator in a string.  Returns -1 if none
+    is found.
 */
 private int lastSeparator(in char[] path)
 {
@@ -110,7 +121,7 @@ private inout(char[]) chompDirSeparators(inout char[] path)
 /*  Helper function that strips the drive designation from a
     Windows path.  On POSIX, this is a noop.
 */
-private inout(char[]) removeDrive(inout char[] path)
+private inout(char[]) stripDrive(inout char[] path)
 {
     version(Windows)
         if (path.length >= 2 && isDriveSeparator(path[1])) return path[2 .. $];
@@ -143,7 +154,8 @@ private inout(char[]) removeDrive(inout char[] path)
 */
 inout(char[]) basename(inout char[] path, in char[] suffix=null)
 {
-    path = removeDrive(path);
+// Spec: http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
+    path = stripDrive(path);
     if (path.length == 0) return path;
 
     auto p = chompDirSeparators(path);
@@ -206,6 +218,7 @@ unittest
 */
 String dirname(String)(String path)  if (isSomeString!String)
 {
+// Spec: http://pubs.opengroup.org/onlinepubs/9699919799/utilities/dirname.html
     if (path.length == 0) return to!String(".");
     auto p = chompDirSeparators(path);
 
@@ -287,6 +300,153 @@ unittest
 
 
 
+/*  Helper function that returns the position of the filename/extension
+    separator dot in path.  If not found, returns -1.
+*/
+private int extSeparatorPos(in char[] path)
+{
+    int i = path.length - 1;
+    while (i >= 0 && !isSeparator(path[i]))
+    {
+        if (path[i] == '.' && i > 0 && !isSeparator(path[i-1])) return i;
+        --i;
+    }
+    return -1;
+}
+
+
+
+
+/** Get the extension part of a file name.
+
+    Examples:
+    ---
+    extension("file")               -->  ""
+    extension("file.ext")           -->  "ext"
+    extension("file.ext1.ext2")     -->  "ext2"
+    extension(".file")              -->  ""
+    extension(".file.ext")          -->  "ext"
+    ---
+*/
+inout(char[]) extension(inout char[] path)
+{
+    int i = extSeparatorPos(path);
+    if (i == -1) return null;
+    else return path[i+1 .. $];
+}
+
+
+unittest
+{
+    assert (extension("file") == "");
+    assert (extension("file.ext") == "ext");
+    assert (extension("file.ext1.ext2") == "ext2");
+    assert (extension(".foo") == "");
+    assert (extension(".foo.ext") == "ext");
+
+    assert (extension("dir/file") == "");
+    assert (extension("dir/file.ext") == "ext");
+    assert (extension("dir/file.ext1.ext2") == "ext2");
+    assert (extension("dir/.foo") == "");
+    assert (extension("dir/.foo.ext") == "ext");
+
+    version(Windows)
+    {
+    assert (extension("dir\\file") == "");
+    assert (extension("dir\\file.ext") == "ext");
+    assert (extension("dir\\file.ext1.ext2") == "ext2");
+    assert (extension("dir\\.foo") == "");
+    assert (extension("dir\\.foo.ext") == "ext");
+
+    assert (extension("d:file") == "");
+    assert (extension("d:file.ext") == "ext");
+    assert (extension("d:file.ext1.ext2") == "ext2");
+    assert (extension("d:.foo") == "");
+    assert (extension("d:.foo.ext") == "ext");
+    }
+}
+
+
+
+
+/** Return the file name without the extension.
+
+    Examples:
+    ---
+    extension("file")               -->  "file"
+    extension("file.ext")           -->  "file"
+    extension("file.ext1.ext2")     -->  "file.ext1"
+    extension(".file")              -->  ".file"
+    extension(".file.ext")          -->  ".file"
+    ---
+*/
+inout(char[]) stripExtension(inout char[] path)
+{
+    int i = extSeparatorPos(path);
+    if (i == -1) return path;
+    else return path[0 .. i];
+}
+
+
+unittest
+{
+    assert (stripExtension("file") == "file");
+    assert (stripExtension("file.ext") == "file");
+    assert (stripExtension("file.ext1.ext2") == "file.ext1");
+    assert (stripExtension(".foo") == ".foo");
+    assert (stripExtension(".foo.ext") == ".foo");
+
+    assert (stripExtension("dir/file") == "dir/file");
+    assert (stripExtension("dir/file.ext") == "dir/file");
+    assert (stripExtension("dir/file.ext1.ext2") == "dir/file.ext1");
+    assert (stripExtension("dir/.foo") == "dir/.foo");
+    assert (stripExtension("dir/.foo.ext") == "dir/.foo");
+
+    version(Windows)
+    {
+    assert (stripExtension("dir\\file") == "dir\\file");
+    assert (stripExtension("dir\\file.ext") == "dir\\file");
+    assert (stripExtension("dir\\file.ext1.ext2") == "dir\\file.ext1");
+    assert (stripExtension("dir\\.foo") == "dir\\.foo");
+    assert (stripExtension("dir\\.foo.ext") == "dir\\.foo");
+
+    assert (stripExtension("d:file") == "d:file");
+    assert (stripExtension("d:file.ext") == "d:file");
+    assert (stripExtension("d:file.ext1.ext2") == "d:file.ext1");
+    assert (stripExtension("d:.foo") == "d:.foo");
+    assert (stripExtension("d:.foo.ext") == "d:.foo");
+    }
+}
+
+
+
+
+/** Set the extension of a filename.
+
+    If the filename already has an extension, it is replaced.
+    If not, the extension is simply appended to the filename.
+
+    Examples:
+    ---
+    setExtension("file", "ext")         -->  "file.ext"
+    setExtension("file.old", "new")     -->  "file.new"
+    ---
+*/
+string setExtension(in char[] path, in char[] ext)
+{
+    return cast(string)(stripExtension(path)~'.'~ext);
+}
+
+
+unittest
+{
+    assert (setExtension("file", "ext") == "file.ext");
+    assert (setExtension("file.old", "new") == "file.new");
+}
+
+
+
+
 /*  Return the position of the last dir separator in path,
     -1 if none found.  On Windows, this includes the colon
     after the drive letter.
@@ -328,66 +488,6 @@ unittest
     {
     assert (chompSlashes("foo\\") == "foo");
     assert (chompSlashes("foo\\\\\\") == "foo");
-    }
-}
-
-
-
-
-/** Get the extension of a file.
-
-    This will search $(D path) from
-    the end until the first dot, in which case it returns what's to
-    the right of the dot, or until the first path separator, in
-    which case it returns an empty string (meaning the file has no
-    extension).
-    
-    Examples:
-    ---
-    extension("/dir/file.ext")      -->  "ext"
-    extension("/dir/file")          -->  ""
-    extension("/dir/.file.ext")     -->  "ext"
-
-    // POSIX only:
-    extension("/dir/.file")         -->  ""     // The dot denotes a hidden
-                                                // file, not an extension.
-
-    // Windows only:
-    extension(r"d:\dir\file.ext")  -->  "ext"
-    extension(r"d:\dir\file")      -->  ""
-    extension(r"d:\dir\.ext")      -->  "ext"
-    ---
-*/
-inout(char[]) extension(inout char[] path)
-{
-    int i = extSepPos(path);
-    if (i == -1) return null;
-    return path[i+1 .. $];
-}
-
-
-unittest
-{
-    assert (extension("foo.bar") == "bar");
-    assert (extension("foo") == "");
-    assert (extension("dir/foo.bar") == "bar");
-    assert (extension("dir/foo") == "");
-
-    version (Posix)
-    {
-    assert (extension(".foo") == "");
-    assert (extension("dir/.foo") == "");
-    }
-
-    version(Windows)
-    {
-    assert (extension(".foo") == "foo");
-    assert (extension("dir\\foo.bar") == "bar");
-    assert (extension("dir\\.foo") == "foo");
-    assert (extension("dir\\foo") == "");
-    assert (extension("d:foo.bar") == "bar");
-    assert (extension("d:.foo") == "foo");
-    assert (extension("d:foo") == "");
     }
 }
 
@@ -556,7 +656,6 @@ string toAbsolute(string path)
 
 
 
-
 /** Convert a relative path to a canonical path.  In addition to
     performing the same operations as toAbsolute(), this function
     does the following:
@@ -577,6 +676,8 @@ string toAbsolute(string path)
 */
 string toCanonical(string path)
 {
+    version(Windows) string altDirSeparator = "\\";
+
     if (path == null) return null;
 
     // Get absolute path, and duplicate it to make sure we can
