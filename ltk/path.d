@@ -447,82 +447,26 @@ unittest
 
 
 
-/*  Return the position of the last dir separator in path,
-    -1 if none found.  On Windows, this includes the colon
-    after the drive letter.
+/** Set the extension of a filename, but only if it doesn't
+    already have one.
+
+    Examples:
+    ---
+    defaultExtension("file", "ext")         -->  "file.ext"
+    defaultExtension("file.old", "new")     -->  "file.old"
 */
-private int lastSlashPos(in char[] path)
+string defaultExtension(in char[] path, in char[] ext)
 {
-    int i = path.length - 1;
-    for (; i >= 0; i--)
-    {
-        version (Posix)
-            if (path[i] == '/')  break;
-
-        version (Windows)
-            if (path[i] == '\\' || path[i] == ':' || path[i] == '/')  break;
-    }
-    return i;
-}
-
-
-
-
-/*  Strip trailing (back)slashes from path. */
-private inout(char[]) chompSlashes(inout char[] path)
-{
-    int i = path.length - 1;
-    version (Posix)   while (path[i] == '/')  i--;
-    version (Windows) while (path[i] == '\\' || path[i] =='/')  i--;
-    return path[0 .. i+1];
+    auto i = extSeparatorPos(path);
+    if (i == -1) return cast(string)(path~'.'~ext);
+    else return path.idup;
 }
 
 
 unittest
 {
-    assert (chompSlashes("foo") == "foo");
-    assert (chompSlashes("foo/") == "foo");
-    assert (chompSlashes("foo///") == "foo");
-
-    version (Windows)
-    {
-    assert (chompSlashes("foo\\") == "foo");
-    assert (chompSlashes("foo\\\\\\") == "foo");
-    }
-}
-
-
-
-
-// Return the position of the filename/extension separator dot
-// in path.  If not found, return -1.
-// This could be included in extension() but for now we keep it
-// as a separate function in case we want more support for extensions
-// later (such as removeExtension(), replaceExtension(), etc.).
-private int extSepPos(in char[] path)
-{
-    int i = path.length - 1;
-
-    version(Windows)
-    {
-        while (i >= 0 && path[i] != dirSeparator[0] && path[i] != ':')
-        {
-            if (path[i] == '.')  return i;
-            i--;
-        }
-    }
-
-    else version(Posix)
-    {
-        while (i >= 0 && path[i] != dirSeparator[0])
-        {
-            if (path[i] == '.' && i != 0 && path[i-1] != dirSeparator[0])
-                return i;
-            i--;
-        }
-    }
-
-    return -1;
+    assert (defaultExtension("file", "ext") == "file.ext");
+    assert (defaultExtension("file.old", "new") == "file.old");
 }
 
 
@@ -768,4 +712,85 @@ unittest
         string p2 = "foo\\boo\\../bar\\..\\../foo\\/\\bar\\baz/";
         assert (toCanonical(p2) == toAbsolute(p1));
     }
+}
+
+
+
+
+/*  Return the position of the last dir separator in path,
+    -1 if none found.  On Windows, this includes the colon
+    after the drive letter.
+*/
+private int lastSlashPos(in char[] path)
+{
+    int i = path.length - 1;
+    for (; i >= 0; i--)
+    {
+        version (Posix)
+            if (path[i] == '/')  break;
+
+        version (Windows)
+            if (path[i] == '\\' || path[i] == ':' || path[i] == '/')  break;
+    }
+    return i;
+}
+
+
+
+
+/*  Strip trailing (back)slashes from path. */
+private inout(char[]) chompSlashes(inout char[] path)
+{
+    int i = path.length - 1;
+    version (Posix)   while (path[i] == '/')  i--;
+    version (Windows) while (path[i] == '\\' || path[i] =='/')  i--;
+    return path[0 .. i+1];
+}
+
+
+unittest
+{
+    assert (chompSlashes("foo") == "foo");
+    assert (chompSlashes("foo/") == "foo");
+    assert (chompSlashes("foo///") == "foo");
+
+    version (Windows)
+    {
+    assert (chompSlashes("foo\\") == "foo");
+    assert (chompSlashes("foo\\\\\\") == "foo");
+    }
+}
+
+
+
+
+// Return the position of the filename/extension separator dot
+// in path.  If not found, return -1.
+// This could be included in extension() but for now we keep it
+// as a separate function in case we want more support for extensions
+// later (such as removeExtension(), replaceExtension(), etc.).
+private int extSepPos(in char[] path)
+{
+    int i = path.length - 1;
+
+    version(Windows)
+    {
+        while (i >= 0 && path[i] != dirSeparator[0] && path[i] != ':')
+        {
+            if (path[i] == '.')  return i;
+            i--;
+        }
+    }
+
+    else version(Posix)
+    {
+        while (i >= 0 && path[i] != dirSeparator[0])
+        {
+            if (path[i] == '.' && i != 0 && path[i-1] != dirSeparator[0])
+                return i;
+            i--;
+        }
+    }
+
+    return -1;
 }
