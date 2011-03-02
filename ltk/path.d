@@ -14,11 +14,13 @@
 module ltk.path;
 
 
+import std.array;
 import std.conv;
 import std.ctype;
 import std.exception;
 import std.file;
 import std.path;
+import std.range;
 import std.string;
 import std.traits;
 
@@ -57,7 +59,7 @@ immutable string parentDirSymbol = "..";
     directory separator.  On Windows, this includes both '\' and '/'.
     On POSIX, it's just '/'.
 */
-private bool isDirSeparator(char c)
+private bool isDirSeparator(dchar c)
 {
     if (c == '/') return true;
     version(Windows) if (c == '\\') return true;
@@ -71,7 +73,7 @@ private bool isDirSeparator(char c)
     letter from the rest of the path.  On POSIX, this always
     returns false.
 */
-private bool isDriveSeparator(char c)
+private bool isDriveSeparator(dchar c)
 {
     version(Windows) return c == ':';
     else return false;
@@ -81,7 +83,7 @@ private bool isDriveSeparator(char c)
 
 /*  Combines the isDirSeparator and isDriveSeparator tests. */
 version(Posix) private alias isDirSeparator isSeparator;
-version(Windows) private bool isSeparator(char c)
+version(Windows) private bool isSeparator(dchar c)
 {
     return isDirSeparator(c) || isDriveSeparator(c);
 }
@@ -94,7 +96,8 @@ version(Windows) private bool isSeparator(char c)
     drive/directory separator in a string.  Returns -1 if none
     is found.
 */
-private int lastSeparator(in char[] path)
+private int lastSeparator(String)(in String path)
+    if (isSomeString!String)
 {
     int i = path.length - 1;
     while (i >= 0 && !isSeparator(path[i])) --i;
@@ -107,7 +110,8 @@ private int lastSeparator(in char[] path)
 /*  Helper function that strips trailing slashes and backslashes
     from a path.
 */
-private inout(char[]) chompDirSeparators(inout char[] path)
+private String chompDirSeparators(String)(String path)
+    if (isSomeString!String)
 {
     int i = path.length - 1;
     while (i >= 0 && isDirSeparator(path[i])) --i;
@@ -120,7 +124,8 @@ private inout(char[]) chompDirSeparators(inout char[] path)
 /*  Helper function that strips the drive designation from a
     Windows path.  On POSIX, this is a noop.
 */
-private inout(char[]) stripDrive(inout char[] path)
+private String stripDrive(String)(String path)
+    if (isSomeString!String)
 {
     version(Windows)
         if (path.length >= 2 && isDriveSeparator(path[1])) return path[2 .. $];
@@ -147,46 +152,50 @@ private inout(char[]) stripDrive(inout char[] path)
     basename(r"dir\file.ext")           -->  "file.ext"
     basename(r"dir\file.ext", ".ext")   -->  "file"
     basename(r"dir\subdir\")            -->  "subdir"
-    basename(r"\")                      -->  "\"
-    basename(r"d:\")                    -->  "\"
+    basename(r"\")                      -->  r"\"
+    basename(r"d:\")                    -->  r"\"
     ---
 */
-inout(char[]) basename(inout char[] path, in char[] suffix=null)
+// This function is written so it adheres to the POSIX requirements
+// for the 'basename' shell utility:
+// http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
+String basename(String)(String path)
+    if (isSomeString!String)
 {
-    // This function is written so it adheres to the POSIX requirements
-    // for the 'basename' shell utility:
-    // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
-
     auto p1 = stripDrive(path);
     if (p1.length == 0) return null;
 
     auto p2 = chompDirSeparators(p1);
     if (p2.length == 0) return p1[0 .. 1];
 
-    auto p3 = p2[lastSeparator(p2)+1 .. $];
+    return p2[lastSeparator(p2)+1 .. $];
+}
 
-    // TODO: Figure out why the casts are needed here.
-    auto p4 = cast(inout(char[])) std.string.chomp(cast(const(char)[]) p3, suffix);
-    if (p4.length == 0) return p3;
-
-    return p4;
+/// ditto
+String basename(String, String1)(String path, String1 suffix)
+    if (isSomeString!String && isSomeString!String1)
+{
+    auto p1 = basename(path);
+    auto p2 = std.string.chomp(p1, suffix);
+    if (p2.length == 0) return p1;
+    else return p2;
 }
 
 
 unittest
 {
     assert (basename("")                            == "");
-    assert (basename("file.ext")                    == "file.ext");
-    assert (basename("file.ext", ".ext")            == "file");
-    assert (basename("file", "file")                == "file");
-    assert (basename("dir/file.ext")                == "file.ext");
-    assert (basename("dir/file.ext", ".ext")        == "file");
-    assert (basename("dir/file", "file")            == "file");
+    assert (basename("file.ext"w)                   == "file.ext");
+    assert (basename("file.ext"d, ".ext")           == "file");
+    assert (basename("file", "file"w.dup)           == "file");
+    assert (basename("dir/file.ext"d.dup)           == "file.ext");
+    assert (basename("dir/file.ext", ".ext"d)       == "file");
+    assert (basename("dir/file"w, "file"d)          == "file");
     assert (basename("dir///subdir////")            == "subdir");
     assert (basename("dir/subdir.ext/", ".ext")     == "subdir");
-    assert (basename("dir/subdir/", "subdir")       == "subdir");
-    assert (basename("/")                           == "/");
-    assert (basename("//")                          == "/");
+    assert (basename("dir/subdir/".dup, "subdir")   == "subdir");
+    assert (basename("/"w.dup)                      == "/");
+    assert (basename("//"d.dup)                     == "/");
     assert (basename("///")                         == "/");
 
     version (Win32)
@@ -259,14 +268,14 @@ String dirname(String)(String path)  if (isSomeString!String)
 unittest
 {
     assert (dirname("")                 == ".");
-    assert (dirname("file")             == ".");
-    assert (dirname("dir/")             == ".");
+    assert (dirname("file"w)            == ".");
+    assert (dirname("dir/"d)            == ".");
     assert (dirname("dir///")           == ".");
-    assert (dirname("dir/file")         == "dir");
-    assert (dirname("dir///file")       == "dir");
+    assert (dirname("dir/file"w.dup)    == "dir");
+    assert (dirname("dir///file"d.dup)  == "dir");
     assert (dirname("dir/subdir/")      == "dir");
-    assert (dirname("/dir/file")        == "/dir");
-    assert (dirname("/file")            == "/");
+    assert (dirname("/dir/file"w)       == "/dir");
+    assert (dirname("/file"d)           == "/");
     assert (dirname("/")                == "/");
     assert (dirname("///")              == "/");
 
@@ -300,7 +309,7 @@ unittest
     drivename(r"dir\file")  -->  ""
     ---
 */
-inout(char[]) drivename(inout char[] path)
+String drivename(String)(String path)  if (isSomeString!String)
 {
     version (Windows)
     {
@@ -328,7 +337,8 @@ unittest
 /*  Helper function that returns the position of the filename/extension
     separator dot in path.  If not found, returns -1.
 */
-private int extSeparatorPos(in char[] path)
+private int extSeparatorPos(String)(in String path)
+    if (isSomeString!String)
 {
     int i = path.length - 1;
     while (i >= 0 && !isSeparator(path[i]))
@@ -353,7 +363,7 @@ private int extSeparatorPos(in char[] path)
     extension(".file.ext")          -->  "ext"
     ---
 */
-inout(char[]) extension(inout char[] path)
+String extension(String)(String path)  if (isSomeString!String)
 {
     int i = extSeparatorPos(path);
     if (i == -1) return null;
@@ -364,16 +374,16 @@ inout(char[]) extension(inout char[] path)
 unittest
 {
     assert (extension("file") == "");
-    assert (extension("file.ext") == "ext");
-    assert (extension("file.ext1.ext2") == "ext2");
-    assert (extension(".foo") == "");
-    assert (extension(".foo.ext") == "ext");
+    assert (extension("file.ext"w) == "ext");
+    assert (extension("file.ext1.ext2"d) == "ext2");
+    assert (extension(".foo".dup) == "");
+    assert (extension(".foo.ext"w.dup) == "ext");
 
-    assert (extension("dir/file") == "");
+    assert (extension("dir/file"d.dup) == "");
     assert (extension("dir/file.ext") == "ext");
-    assert (extension("dir/file.ext1.ext2") == "ext2");
-    assert (extension("dir/.foo") == "");
-    assert (extension("dir/.foo.ext") == "ext");
+    assert (extension("dir/file.ext1.ext2"w) == "ext2");
+    assert (extension("dir/.foo"d) == "");
+    assert (extension("dir/.foo.ext".dup) == "ext");
 
     version(Windows)
     {
@@ -405,7 +415,7 @@ unittest
     extension(".file.ext")          -->  ".file"
     ---
 */
-inout(char[]) stripExtension(inout char[] path)
+String stripExtension(String)(String path)  if (isSomeString!String)
 {
     int i = extSeparatorPos(path);
     if (i == -1) return path;
@@ -416,16 +426,16 @@ inout(char[]) stripExtension(inout char[] path)
 unittest
 {
     assert (stripExtension("file") == "file");
-    assert (stripExtension("file.ext") == "file");
-    assert (stripExtension("file.ext1.ext2") == "file.ext1");
-    assert (stripExtension(".foo") == ".foo");
-    assert (stripExtension(".foo.ext") == ".foo");
+    assert (stripExtension("file.ext"w) == "file");
+    assert (stripExtension("file.ext1.ext2"d) == "file.ext1");
+    assert (stripExtension(".foo".dup) == ".foo");
+    assert (stripExtension(".foo.ext"w.dup) == ".foo");
 
-    assert (stripExtension("dir/file") == "dir/file");
+    assert (stripExtension("dir/file"d.dup) == "dir/file");
     assert (stripExtension("dir/file.ext") == "dir/file");
-    assert (stripExtension("dir/file.ext1.ext2") == "dir/file.ext1");
-    assert (stripExtension("dir/.foo") == "dir/.foo");
-    assert (stripExtension("dir/.foo.ext") == "dir/.foo");
+    assert (stripExtension("dir/file.ext1.ext2"w) == "dir/file.ext1");
+    assert (stripExtension("dir/.foo"d) == "dir/.foo");
+    assert (stripExtension("dir/.foo.ext".dup) == "dir/.foo");
 
     version(Windows)
     {
@@ -448,8 +458,12 @@ unittest
 
 /** Set the extension of a filename.
 
-    If the filename already has an extension, it is replaced.
-    If not, the extension is simply appended to the filename.
+    If the filename already has an extension, it is replaced.   If not, the
+    extension is simply appended to the filename.
+
+    This function always allocates a new string.  If the arguments have the
+    same type, the result will be an immutable string of the same type.
+    If they have different types, the result will be a dstring.
 
     Examples:
     ---
@@ -457,16 +471,31 @@ unittest
     setExtension("file.old", "new")     -->  "file.new"
     ---
 */
-string setExtension(in char[] path, in char[] ext)
+auto setExtension(String1, String2)(in String1 path, in String2 ext)
+    if (isSomeString!String1 && isSomeString!String2)
 {
-    return cast(string)(stripExtension(path)~'.'~ext);
+    alias Unqual!(typeof(path[0])) C1;
+    alias Unqual!(typeof(ext[0])) C2;
+    static if (is(C1 == C2))
+    {
+        return cast(immutable(C1)[])(stripExtension(path)~'.'~ext);
+    }
+    else
+    {
+        return cast(dstring) array(chain(stripExtension(path), ".", ext));
+    }
 }
 
 
 unittest
 {
-    assert (setExtension("file", "ext") == "file.ext");
-    assert (setExtension("file.old", "new") == "file.new");
+    auto p1 = setExtension("file"w, "ext"w);
+    assert (p1 == "file.ext");
+    static assert (is(typeof(p1) == wstring));
+
+    auto p2 = setExtension("file.old", "new"w);
+    assert (p2 == "file.new");
+    static assert (is(typeof(p2) == dstring));
 }
 
 
@@ -475,23 +504,45 @@ unittest
 /** Set the extension of a filename, but only if it doesn't
     already have one.
 
+    This function always allocates a new string.  If the arguments have the
+    same type, the result will be an immutable string of the same type.
+    If they have different types, the result will be a dstring.
+
     Examples:
     ---
     defaultExtension("file", "ext")         -->  "file.ext"
     defaultExtension("file.old", "new")     -->  "file.old"
+    ---
 */
-string defaultExtension(in char[] path, in char[] ext)
+auto defaultExtension(String1, String2)(in String1 path, in String2 ext)
 {
+    alias Unqual!(typeof(path[0])) C1;
+    alias Unqual!(typeof(ext[0])) C2;
+
     auto i = extSeparatorPos(path);
-    if (i == -1) return cast(string)(path~'.'~ext);
-    else return path.idup;
+
+    static if (is(C1 == C2))
+    {
+        if (i == -1) return cast(immutable(C1)[])(path~'.'~ext);
+        else return path.idup;
+    }
+    else
+    {
+        if (i == -1) return cast(dstring) array(chain(path, ".", ext));
+        else return to!dstring(path);
+    }
 }
 
 
 unittest
 {
-    assert (defaultExtension("file", "ext") == "file.ext");
-    assert (defaultExtension("file.old", "new") == "file.old");
+    auto p1 = defaultExtension("file"w, "ext"w);
+    assert (p1 == "file.ext");
+    static assert (is(typeof(p1) == wstring));
+
+    auto p2 = defaultExtension("file.old", "new"w);
+    assert (p2 == "file.old");
+    static assert (is(typeof(p2) == dstring));
 }
 
 
