@@ -30,36 +30,31 @@ import std.traits;
 /** String used to separate directory names in a path.  Under
     POSIX this is a slash, under Windows a backslash.
 */
-version(Posix)   immutable string dirSeparator = "/";
-version(Windows) immutable string dirSeparator = "\\";
+version(Posix)   enum string dirSeparator = "/";
+version(Windows) enum string dirSeparator = "\\";
 
 
 /** Path separator string.  A colon under POSIX, a semicolon
     under Windows.
 */
-version(Posix)   immutable string pathSeparator = ":";
-version(Windows) immutable string pathSeparator = ";";
+version(Posix)   enum string pathSeparator = ":";
+version(Windows) enum string pathSeparator = ";";
 
 
-/** String representing the current directory.  A dot under
-    both POSIX and Windows.
+/** Strings representing the current and parent directories
+    ("." and "..", respectively)
 */
-immutable string currentDirSymbol = ".";
+enum string currentDirSymbol = ".";
+enum string parentDirSymbol = "..";     /// ditto
 
 
-/** String representing the parent directory.  A double dot under
-    both POSIX and Windows.
+
+
+/** Determine whether the given character is a directory separator.
+
+    On Windows, this includes both '\' and '/'.  On POSIX, it's just '/'.
 */
-immutable string parentDirSymbol = "..";
-
-
-
-
-/*  Helper function that determines whether the given character is a
-    directory separator.  On Windows, this includes both '\' and '/'.
-    On POSIX, it's just '/'.
-*/
-private bool isDirSeparator(dchar c)
+bool isDirSeparator(dchar c)
 {
     if (c == '/') return true;
     version(Windows) if (c == '\\') return true;
@@ -67,10 +62,10 @@ private bool isDirSeparator(dchar c)
 }
 
 
+/*  Determine whether the given character is a drive separator.
 
-/*  Helper function that, on Windows, determines whether the given
-    character is the colon character that separates the drive
-    letter from the rest of the path.  On POSIX, this always
+    On Windows, this is true if c is the ':' character that separates
+    the drive letter from the rest of the path.  On POSIX, this always
     returns false.
 */
 private bool isDriveSeparator(dchar c)
@@ -80,16 +75,12 @@ private bool isDriveSeparator(dchar c)
 }
 
 
-
 /*  Combines the isDirSeparator and isDriveSeparator tests. */
-version(Posix) private alias isDirSeparator isSeparator;
 version(Windows) private bool isSeparator(dchar c)
 {
     return isDirSeparator(c) || isDriveSeparator(c);
 }
-
-
-
+version(Posix) private alias isDirSeparator isSeparator;
 
 
 /*  Helper function that determines the position of the last
@@ -104,8 +95,6 @@ private int lastSeparator(C)(in C[] path)  if (isSomeChar!C)
 }
 
 
-
-
 /*  Helper function that strips trailing slashes and backslashes
     from a path.
 */
@@ -114,19 +103,6 @@ private C[] chompDirSeparators(C)(C[] path)  if (isSomeChar!C)
     int i = path.length - 1;
     while (i >= 0 && isDirSeparator(path[i])) --i;
     return path[0 .. i+1];
-}
-
-
-
-
-/*  Helper function that strips the drive designation from a
-    Windows path.  On POSIX, this is a noop.
-*/
-private C[] stripDrive(C)(C[] path)  if (isSomeChar!C)
-{
-    version(Windows)
-        if (path.length >= 2 && isDriveSeparator(path[1])) return path[2 .. $];
-    return path;
 }
 
 
@@ -333,6 +309,31 @@ unittest
     assert (drivename("d:file") == "d:");
     assert (drivename("d:\\file") == "d:");
     }
+}
+
+
+
+
+/** Strip the drive designation from a Windows path.
+    On POSIX, this is a noop.
+
+    Example:
+    ---
+    stripDrive(r"d:\dir\file")       -->  r"\dir\file"
+    ---
+*/
+C[] stripDrive(C)(C[] path)  if (isSomeChar!C)
+{
+    version(Windows)
+        if (path.length >= 2 && isDriveSeparator(path[1])) return path[2 .. $];
+    return path;
+}
+
+
+unittest
+{
+    version(Windows) assert (stripDrive(r"d:\dir\file") == r"\dir\file");
+    version(Posix)   assert (stripDrive(r"d:\dir\file") == r"d:\dir\file");
 }
 
 
