@@ -10,6 +10,10 @@
     functions like extension() will work with it just as if it was a file.
     To differentiate these cases, use the std.file module first (i.e.
     std.file.isDir()).
+
+    Authors:    Lars Tandle Kyllingstad
+    Copyright:  Copyright (c) 2010–2011, Lars T. Kyllingstad. All rights reserved.
+    License:    Boost License 1.0
 */
 module ltk.path;
 
