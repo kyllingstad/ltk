@@ -198,19 +198,19 @@ unittest
 
     Examples:
     ---
-    dirname("file")             -->  "."
-    dirname("dir/file")         -->  "dir"
-    dirname("/file")            -->  "/"
-    dirname("dir/subdir/")      -->  "dir"
+    directory("file")             -->  "."
+    directory("dir/file")         -->  "dir"
+    directory("/file")            -->  "/"
+    directory("dir/subdir/")      -->  "dir"
 
     // Windows only:
-    dirname( "d:file")          -->  "d:"
-    dirname(r"d:\dir\file")     --> r"d:\dir"
-    dirname(r"d:\file")         --> r"d:\"
-    dirname(r"dir\subdir\")     -->  "dir"
+    directory( "d:file")          -->  "d:"
+    directory(r"d:\dir\file")     --> r"d:\dir"
+    directory(r"d:\file")         --> r"d:\"
+    directory(r"dir\subdir\")     -->  "dir"
     ---
 */
-C[] dirname(C)(C[] path)  if (isSomeChar!C)
+C[] directory(C)(C[] path)  if (isSomeChar!C)
 {
     // This function is written so it adheres to the POSIX requirements
     // for the 'dirname' shell utility:
@@ -239,34 +239,34 @@ C[] dirname(C)(C[] path)  if (isSomeChar!C)
 
 unittest
 {
-    assert (dirname("")                 == ".");
-    assert (dirname("file"w)            == ".");
-    assert (dirname("dir/"d)            == ".");
-    assert (dirname("dir///")           == ".");
-    assert (dirname("dir/file"w.dup)    == "dir");
-    assert (dirname("dir///file"d.dup)  == "dir");
-    assert (dirname("dir/subdir/")      == "dir");
-    assert (dirname("/dir/file"w)       == "/dir");
-    assert (dirname("/file"d)           == "/");
-    assert (dirname("/")                == "/");
-    assert (dirname("///")              == "/");
+    assert (directory("")                 == ".");
+    assert (directory("file"w)            == ".");
+    assert (directory("dir/"d)            == ".");
+    assert (directory("dir///")           == ".");
+    assert (directory("dir/file"w.dup)    == "dir");
+    assert (directory("dir///file"d.dup)  == "dir");
+    assert (directory("dir/subdir/")      == "dir");
+    assert (directory("/dir/file"w)       == "/dir");
+    assert (directory("/file"d)           == "/");
+    assert (directory("/")                == "/");
+    assert (directory("///")              == "/");
 
     version (Windows)
     {
-    assert (dirname("dir\\")            == ".");
-    assert (dirname("dir\\\\\\")        == ".");
-    assert (dirname("dir\\file")        == "dir");
-    assert (dirname("dir\\\\\\file")    == "dir");
-    assert (dirname("dir\\subdir\\")    == "dir");
-    assert (dirname("\\dir\\file")      == "\\dir");
-    assert (dirname("\\file")           == "\\");
-    assert (dirname("\\")               == "\\");
-    assert (dirname("\\\\\\")           == "\\");
-    assert (dirname("d:")               == "d:");
-    assert (dirname("d:file")           == "d:");
-    assert (dirname("d:\\")             == "d:\\");
-    assert (dirname("d:\\file")         == "d:\\");
-    assert (dirname("d:\\dir\\file")    == "d:\\dir");
+    assert (directory("dir\\")            == ".");
+    assert (directory("dir\\\\\\")        == ".");
+    assert (directory("dir\\file")        == "dir");
+    assert (directory("dir\\\\\\file")    == "dir");
+    assert (directory("dir\\subdir\\")    == "dir");
+    assert (directory("\\dir\\file")      == "\\dir");
+    assert (directory("\\file")           == "\\");
+    assert (directory("\\")               == "\\");
+    assert (directory("\\\\\\")           == "\\");
+    assert (directory("d:")               == "d:");
+    assert (directory("d:file")           == "d:");
+    assert (directory("d:\\")             == "d:\\");
+    assert (directory("d:\\file")         == "d:\\");
+    assert (directory("d:\\dir\\file")    == "d:\\dir");
     }
 }
 
@@ -280,12 +280,12 @@ unittest
 
     Examples:
     ---
-    drivename( "d:file")    -->  "d:"
-    drivename(r"d:\file")   -->  "d:"
-    drivename(r"dir\file")  -->  ""
+    drive( "d:file")    -->  "d:"
+    drive(r"d:\file")   -->  "d:"
+    drive(r"dir\file")  -->  ""
     ---
 */
-C[] drivename(C)(C[] path)  if (isSomeChar!C)
+C[] drive(C)(C[] path)  if (isSomeChar!C)
 {
     version (Windows)
     {
@@ -298,12 +298,12 @@ C[] drivename(C)(C[] path)  if (isSomeChar!C)
 
 unittest
 {
-    version (Posix)  assert (drivename("c:/foo") == null);
+    version (Posix)  assert (drive("c:/foo") == null);
     version (Windows)
     {
-    assert (drivename("dir\\file") == null);
-    assert (drivename("d:file") == "d:");
-    assert (drivename("d:\\file") == "d:");
+    assert (drive("dir\\file") == null);
+    assert (drive("d:file") == "d:");
+    assert (drive("d:\\file") == "d:");
     }
 }
 
@@ -565,21 +565,21 @@ version (unittest)
     Examples:
     ---
     // On Windows:
-    join(r"c:\foo", "bar")  -->  r"c:\foo\bar"
-    join("foo", r"d:\bar")  -->  r"d:\bar"
+    joinPath(r"c:\foo", "bar")  -->  r"c:\foo\bar"
+    joinPath("foo", r"d:\bar")  -->  r"d:\bar"
 
     // On POSIX
-    join("/foo/", "bar")    -->  "/foo/bar"
-    join("/foo", "/bar")    -->  "/bar"
+    joinPath("/foo/", "bar")    -->  "/foo/bar"
+    joinPath("/foo", "/bar")    -->  "/bar"
     ---
 */
-immutable(Unqual!C)[] join(C, Strings...)(in C[] path, in Strings morePaths)
+immutable(Unqual!C)[] joinPath(C, Strings...)(in C[] path, in Strings morePaths)
     if (Strings.length > 0 && compatibleStrings!(C[], Strings))
 {
     // More than two path components
     static if (Strings.length > 1)
     {
-        return join(join(path, morePaths[0]), morePaths[1 .. $]);
+        return joinPath(joinPath(path, morePaths[0]), morePaths[1 .. $]);
     }
 
     // Exactly two path components
@@ -603,22 +603,22 @@ unittest
 {
     version (Posix)
     {
-        assert (join("foo", "bar") == "foo/bar");
-        assert (join("foo/".dup, "bar") == "foo/bar");
-        assert (join("foo///", "bar".dup) == "foo///bar");
-        assert (join("/foo"w, "bar"w) == "/foo/bar");
-        assert (join("foo"w.dup, "/bar"w) == "/bar");
-        assert (join("foo"w, "bar/"w.dup) == "foo/bar/");
-        assert (join("/"d, "foo"d) == "/foo");
-        assert (join(""d.dup, "foo"d) == "foo");
-        assert (join("foo"d, ""d.dup) == "foo");
-        assert (join("foo", "bar".dup, "baz") == "foo/bar/baz");
-        assert (join("foo"w, "/bar"w, "baz"w.dup) == "/bar/baz");
+        assert (joinPath("foo", "bar") == "foo/bar");
+        assert (joinPath("foo/".dup, "bar") == "foo/bar");
+        assert (joinPath("foo///", "bar".dup) == "foo///bar");
+        assert (joinPath("/foo"w, "bar"w) == "/foo/bar");
+        assert (joinPath("foo"w.dup, "/bar"w) == "/bar");
+        assert (joinPath("foo"w, "bar/"w.dup) == "foo/bar/");
+        assert (joinPath("/"d, "foo"d) == "/foo");
+        assert (joinPath(""d.dup, "foo"d) == "foo");
+        assert (joinPath("foo"d, ""d.dup) == "foo");
+        assert (joinPath("foo", "bar".dup, "baz") == "foo/bar/baz");
+        assert (joinPath("foo"w, "/bar"w, "baz"w.dup) == "/bar/baz");
     }
     version (Windows)
     {
-        assert (join(r"c:\foo", "bar") == r"c:\foo\bar");
-        assert (join("foo"w, r"d:\bar"w.dup) ==  r"d:\bar");
+        assert (joinPath(r"c:\foo", "bar") == r"c:\foo\bar");
+        assert (joinPath("foo"w, r"d:\bar"w.dup) ==  r"d:\bar");
     }
 }
 
@@ -713,7 +713,7 @@ string toAbsolute(string path)
 {
     if (path.length == 0)  return null;
     if (isAbsolute(path))  return path;
-    return join(getcwd(), path);
+    return joinPath(getcwd(), path);
 }
 
 
@@ -823,11 +823,34 @@ unittest
 
 
 
+
 import std.path;
-/** Functions from the current std.path which I don't plan to change,
-    but which should perhaps get better names?
+/** Functions from the current std.path which I don't plan to change.
+    Some of them should perhaps be renamed.
 */
 alias std.path.fcmp fcmp;
 alias std.path.fncharmatch fncharmatch; /// ditto
 alias std.path.fnmatch fnmatch;         /// ditto
 alias std.path.expandTilde expandTilde; /// ditto
+
+
+deprecated:
+/** Kept for backwards compatibility */
+alias dirSeparator sep;
+enum string altsep = "/"; /// ditto
+alias pathSeparator pathsep; /// ditto
+version(Windows) enum string linesep = "\r\n"; /// ditto
+version(Posix) enum string linesep = "\n"; /// ditto
+alias currentDirSymbol curdir; /// ditto
+alias parentDirSymbol pardir; /// ditto
+alias extension getExt; /// ditto
+string getName(string path) { return basename(stripExtension(path)); } /// ditto
+alias basename getBaseName; /// ditto
+alias directory dirname; /// ditto
+alias directory getDirName; /// ditto
+alias drive getDrive; /// ditto
+alias defaultExtension defaultExt; /// ditto
+alias setExtension addExt; /// ditto
+alias isAbsolute isabs; /// ditto
+alias toAbsolute rel2abs; /// ditto
+alias joinPath join; /// ditto
