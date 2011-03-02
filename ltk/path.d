@@ -96,8 +96,7 @@ version(Windows) private bool isSeparator(dchar c)
     drive/directory separator in a string.  Returns -1 if none
     is found.
 */
-private int lastSeparator(String)(in String path)
-    if (isSomeString!String)
+private int lastSeparator(C)(in C[] path)  if (isSomeChar!C)
 {
     int i = path.length - 1;
     while (i >= 0 && !isSeparator(path[i])) --i;
@@ -110,8 +109,7 @@ private int lastSeparator(String)(in String path)
 /*  Helper function that strips trailing slashes and backslashes
     from a path.
 */
-private String chompDirSeparators(String)(String path)
-    if (isSomeString!String)
+private C[] chompDirSeparators(C)(C[] path)  if (isSomeChar!C)
 {
     int i = path.length - 1;
     while (i >= 0 && isDirSeparator(path[i])) --i;
@@ -124,8 +122,7 @@ private String chompDirSeparators(String)(String path)
 /*  Helper function that strips the drive designation from a
     Windows path.  On POSIX, this is a noop.
 */
-private String stripDrive(String)(String path)
-    if (isSomeString!String)
+private C[] stripDrive(C)(C[] path)  if (isSomeChar!C)
 {
     version(Windows)
         if (path.length >= 2 && isDriveSeparator(path[1])) return path[2 .. $];
@@ -159,8 +156,7 @@ private String stripDrive(String)(String path)
 // This function is written so it adheres to the POSIX requirements
 // for the 'basename' shell utility:
 // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
-String basename(String)(String path)
-    if (isSomeString!String)
+C[] basename(C)(C[] path) if (isSomeChar!C)
 {
     auto p1 = stripDrive(path);
     if (p1.length == 0) return null;
@@ -172,8 +168,7 @@ String basename(String)(String path)
 }
 
 /// ditto
-String basename(String, String1)(String path, String1 suffix)
-    if (isSomeString!String && isSomeString!String1)
+C[] basename(C, C1)(C[] path, C1[] suffix)  if (isSomeChar!C && isSomeChar!C1)
 {
     auto p1 = basename(path);
     auto p2 = std.string.chomp(p1, suffix);
@@ -238,13 +233,13 @@ unittest
     dirname(r"dir\subdir\")     -->  "dir"
     ---
 */
-String dirname(String)(String path)  if (isSomeString!String)
+C[] dirname(C)(C[] path)  if (isSomeChar!C)
 {
     // This function is written so it adheres to the POSIX requirements
     // for the 'dirname' shell utility:
     // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/dirname.html
 
-    if (path.length == 0) return to!String(".");
+    if (path.length == 0) return to!(typeof(return))(".");
 
     auto p = chompDirSeparators(path);
     if (p.length == 0) return path[0 .. 1];
@@ -252,7 +247,7 @@ String dirname(String)(String path)  if (isSomeString!String)
         return path[0 .. 3];
 
     int i = lastSeparator(p);
-    if (i == -1) return to!String(".");
+    if (i == -1) return to!(typeof(return))(".");
     if (i == 0) return p[0 .. 1];
 
     // If the directory part is either d: or d:\, don't
@@ -309,7 +304,7 @@ unittest
     drivename(r"dir\file")  -->  ""
     ---
 */
-String drivename(String)(String path)  if (isSomeString!String)
+C[] drivename(C)(C[] path)  if (isSomeChar!C)
 {
     version (Windows)
     {
@@ -337,8 +332,7 @@ unittest
 /*  Helper function that returns the position of the filename/extension
     separator dot in path.  If not found, returns -1.
 */
-private int extSeparatorPos(String)(in String path)
-    if (isSomeString!String)
+private int extSeparatorPos(C)(in C[] path) if (isSomeChar!C)
 {
     int i = path.length - 1;
     while (i >= 0 && !isSeparator(path[i]))
@@ -363,7 +357,7 @@ private int extSeparatorPos(String)(in String path)
     extension(".file.ext")          -->  "ext"
     ---
 */
-String extension(String)(String path)  if (isSomeString!String)
+C[] extension(C)(C[] path)  if (isSomeChar!C)
 {
     int i = extSeparatorPos(path);
     if (i == -1) return null;
@@ -415,7 +409,7 @@ unittest
     extension(".file.ext")          -->  ".file"
     ---
 */
-String stripExtension(String)(String path)  if (isSomeString!String)
+C[] stripExtension(C)(C[] path)  if (isSomeChar!C)
 {
     int i = extSeparatorPos(path);
     if (i == -1) return path;
@@ -461,9 +455,7 @@ unittest
     If the filename already has an extension, it is replaced.   If not, the
     extension is simply appended to the filename.
 
-    This function always allocates a new string.  If the arguments have the
-    same type, the result will be an immutable string of the same type.
-    If they have different types, the result will be a dstring.
+    This function always allocates a new string.
 
     Examples:
     ---
@@ -471,31 +463,22 @@ unittest
     setExtension("file.old", "new")     -->  "file.new"
     ---
 */
-auto setExtension(String1, String2)(in String1 path, in String2 ext)
-    if (isSomeString!String1 && isSomeString!String2)
+immutable(Unqual!C1)[] setExtension(C1, C2)(in C1[] path, in C2[] ext)
+    if (isSomeChar!C1 && is(Unqual!C1 == Unqual!C2))
 {
-    alias Unqual!(typeof(path[0])) C1;
-    alias Unqual!(typeof(ext[0])) C2;
-    static if (is(C1 == C2))
-    {
-        return cast(immutable(C1)[])(stripExtension(path)~'.'~ext);
-    }
-    else
-    {
-        return cast(dstring) array(chain(stripExtension(path), ".", ext));
-    }
+    return cast(typeof(return))(stripExtension(path)~'.'~ext);
 }
 
 
 unittest
 {
-    auto p1 = setExtension("file"w, "ext"w);
+    auto p1 = setExtension("file", "ext");
     assert (p1 == "file.ext");
-    static assert (is(typeof(p1) == wstring));
+    static assert (is(typeof(p1) == string));
 
-    auto p2 = setExtension("file.old", "new"w);
+    auto p2 = setExtension("file.old"w.dup, "new"w);
     assert (p2 == "file.new");
-    static assert (is(typeof(p2) == dstring));
+    static assert (is(typeof(p2) == wstring));
 }
 
 
@@ -504,9 +487,7 @@ unittest
 /** Set the extension of a filename, but only if it doesn't
     already have one.
 
-    This function always allocates a new string.  If the arguments have the
-    same type, the result will be an immutable string of the same type.
-    If they have different types, the result will be a dstring.
+    This function always allocates a new string.
 
     Examples:
     ---
@@ -514,23 +495,12 @@ unittest
     defaultExtension("file.old", "new")     -->  "file.old"
     ---
 */
-auto defaultExtension(String1, String2)(in String1 path, in String2 ext)
+immutable(Unqual!C1)[] defaultExtension(C1, C2)(in C1[] path, in C2[] ext)
+    if (isSomeChar!C1 && is(Unqual!C1 == Unqual!C2))
 {
-    alias Unqual!(typeof(path[0])) C1;
-    alias Unqual!(typeof(ext[0])) C2;
-
     auto i = extSeparatorPos(path);
-
-    static if (is(C1 == C2))
-    {
-        if (i == -1) return cast(immutable(C1)[])(path~'.'~ext);
-        else return path.idup;
-    }
-    else
-    {
-        if (i == -1) return cast(dstring) array(chain(path, ".", ext));
-        else return to!dstring(path);
-    }
+    if (i == -1) return cast(typeof(return))(path~'.'~ext);
+    else return path.idup;
 }
 
 
@@ -540,7 +510,7 @@ unittest
     assert (p1 == "file.ext");
     static assert (is(typeof(p1) == wstring));
 
-    auto p2 = defaultExtension("file.old", "new"w);
+    auto p2 = defaultExtension("file.old"d, "new"d.dup);
     assert (p2 == "file.old");
     static assert (is(typeof(p2) == dstring));
 }
@@ -548,22 +518,56 @@ unittest
 
 
 
+// Detects whether the given types are all string types of the same width
+private template compatibleStrings(Strings...)  if (Strings.length > 0)
+{
+    static if (Strings.length == 1)
+    {
+        enum compatibleStrings = isSomeChar!(typeof(Strings[0].init[0]));
+    }
+    else
+    {
+        enum compatibleStrings =
+            is(Unqual!(typeof(Strings[0].init[0])) == Unqual!(typeof(Strings[1].init[0])))
+            && compatibleStrings!(Strings[1 .. $]);
+    }
+}
+
+version (unittest)
+{
+    static assert (compatibleStrings!(char[], const(char)[], string));
+    static assert (compatibleStrings!(wchar[], const(wchar)[], wstring));
+    static assert (compatibleStrings!(dchar[], const(dchar)[], dstring));
+    static assert (!compatibleStrings!(int[], const(int)[], immutable(int)[]));
+    static assert (!compatibleStrings!(char[], wchar[]));
+    static assert (!compatibleStrings!(char[], dstring));
+}
+
+
 /** Joins two or more path components. */
-string join(in char[] path1, in char[] path2, in char[][] more...)
+immutable(Unqual!C)[] join(C, Strings...)(in C[] path, in Strings morePaths)
+    if (compatibleStrings!(C[], Strings))
 {
     // More than two path components
-    if (more.length > 0)
-        return join(join(path1, path2), more[0], more[1 .. $]);
+    static if (Strings.length > 1)
+    {
+        return join(join(path, morePaths[0]), morePaths[1 .. $]);
+    }
 
     // Exactly two path components
-    if (path2.length == 0) return path1.idup;
-    if (path1.length == 0) return path2.idup;
-    if (isAbsolute(path2)) return path2.idup;
-
-    if (isDirSeparator(path1[$-1]) || isDirSeparator(path2[0]))
-        return cast(string)(path1 ~ path2);
     else
-        return cast(string)(path1 ~ dirSeparator ~ path2);
+    {
+        alias path path1;
+        alias morePaths[0] path2;
+        if (path2.length == 0) return path1.idup;
+        if (path1.length == 0) return path2.idup;
+        if (isAbsolute(path2)) return path2.idup;
+
+        if (isDirSeparator(path1[$-1]) || isDirSeparator(path2[0]))
+            return cast(string)(path1 ~ path2);
+        else
+            return cast(string)(path1 ~ dirSeparator ~ path2);
+    }
 }
 
 
@@ -614,23 +618,26 @@ unittest
     assert (isAbsolute(r"d:\foo"));
     ---
 */
-version (Posix)  bool isAbsolute(in char[] path)
+bool isAbsolute(C)(in C[] path)  if (isSomeChar!C)
 {
-    if (path == null)  return false;
-    return (path[0] == '/');
+    version (Posix)
+    {
+        if (path.length == 0)  return false;
+        return (path[0] == '/');
+    }
+    else version (Windows)
+    {
+        return (path.length >= 3
+            &&  path[1] == ':'
+            && (path[2] == '\\' || path[2] == '/'));
+    }
 }
 
-version (Windows)  bool isAbsolute(in char[] path)
-{
-    return (path.length >= 3
-        &&  path[1] == ':'
-        && (path[2] == '\\' || path[2] == '/'));
-}
 
 /// ditto
-bool isRelative(in char[] path)
+bool isRelative(C)(in C[] path)  if (isSomeChar!C)
 {
-    if (path == null)  return false;
+    if (path.length == 0)  return false;
     return !isAbsolute(path);
 }
 
@@ -638,21 +645,21 @@ bool isRelative(in char[] path)
 unittest
 {
     assert (isRelative("foo"));
-    assert (isRelative("../foo"));
+    assert (isRelative("../foo"w));
 
     version (Posix) 
     {
-    assert (isAbsolute("/"));
-    assert (isAbsolute("/foo"));
+    assert (isAbsolute("/"d));
+    assert (isAbsolute("/foo".dup));
     }
 
     version (Windows)
     {
-    assert (isRelative("\\"));
-    assert (isRelative("\\foo"));
+    assert (isRelative("\\"w.dup));
+    assert (isRelative("\\foo"d.dup));
     assert (isRelative("d:foo"));
-    assert (isAbsolute("d:\\"));
-    assert (isAbsolute("d:\\foo"));
+    assert (isAbsolute("d:\\"w));
+    assert (isAbsolute("d:\\foo"d));
     }
 }
 
@@ -669,7 +676,7 @@ unittest
 */
 string toAbsolute(string path)
 {
-    if (path == null)  return null;
+    if (path.length == 0)  return null;
     if (isAbsolute(path))  return path;
     return join(getcwd(), path);
 }
