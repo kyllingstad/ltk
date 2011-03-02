@@ -487,7 +487,8 @@ unittest
 /** Set the extension of a filename, but only if it doesn't
     already have one.
 
-    This function always allocates a new string.
+    This function always allocates a new string, except in the case when
+    path is immutable and already has an extension.
 
     Examples:
     ---
@@ -608,8 +609,8 @@ unittest
     ---
 
     On Windows, an absolute path starts at the root directory of
-    a specific drive.  Hence, it must start with "d:\", where d
-    is the drive letter.
+    a specific drive.  Hence, it must start with "d:\" or "d:/",
+    where d is the drive letter.
     ---
     assert (isRelative(r"\"));
     assert (isRelative(r"\foo"));
@@ -622,14 +623,12 @@ bool isAbsolute(C)(in C[] path)  if (isSomeChar!C)
 {
     version (Posix)
     {
-        if (path.length == 0)  return false;
-        return (path[0] == '/');
+        return path.length >= 1 && isDirSeparator(path[0]);
     }
     else version (Windows)
     {
-        return (path.length >= 3
-            &&  path[1] == ':'
-            && (path[2] == '\\' || path[2] == '/'));
+        return path.length >= 3 && isDriveSeparator(path[1])
+            && isDirSeparator(path[2]);
     }
 }
 
@@ -657,6 +656,7 @@ unittest
     {
     assert (isRelative("\\"w.dup));
     assert (isRelative("\\foo"d.dup));
+    assert (isRelative("d:"));
     assert (isRelative("d:foo"));
     assert (isAbsolute("d:\\"w));
     assert (isAbsolute("d:\\foo"d));
@@ -666,7 +666,9 @@ unittest
 
 
 
-/** Translate path into an absolute _path.  This means:
+/** Translate path into an absolute _path.
+
+    This means:
     $(UL
         $(LI If path is empty, return an empty string.)
         $(LI If path is already absolute, return it.)
