@@ -80,7 +80,7 @@ private bool isDriveSeparator(char c)
 
 
 /*  Combines the isDirSeparator and isDriveSeparator tests. */
-version(Posix) alias isDirSeparator isSeparator;
+version(Posix) private alias isDirSeparator isSeparator;
 version(Windows) private bool isSeparator(char c)
 {
     return isDirSeparator(c) || isDriveSeparator(c);
@@ -97,8 +97,7 @@ version(Windows) private bool isSeparator(char c)
 private int lastSeparator(in char[] path)
 {
     int i = path.length - 1;
-    while (i >= 0 && !isDirSeparator(path[i]) && !isDriveSeparator(path[i]))
-        --i;
+    while (i >= 0 && !isSeparator(path[i])) --i;
     return i;
 }
 
@@ -237,25 +236,23 @@ String dirname(String)(String path)  if (isSomeString!String)
     // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/dirname.html
 
     if (path.length == 0) return to!String(".");
-    auto p = chompDirSeparators(path);
 
-    // If this is the root directory, return one of the
-    // (back)slashes just stripped off.
+    auto p = chompDirSeparators(path);
     if (p.length == 0) return path[0 .. 1];
+    if (p.length == 2 && isDriveSeparator(p[1]) && path.length > 2)
+        return path[0 .. 3];
 
     int i = lastSeparator(p);
-    if (i == -1) return to!String(".");     // No dir
-    if (i == 0) return p[0 .. 1];           // Root dir
+    if (i == -1) return to!String(".");
+    if (i == 0) return p[0 .. 1];
 
     // If the directory part is either d: or d:\, don't
     // chop off the last symbol.
-    if (isDriveSeparator(path[i]) || isDriveSeparator(path[i-1]))
-        return path[0 .. i+1];
+    if (isDriveSeparator(p[i]) || isDriveSeparator(p[i-1]))
+        return p[0 .. i+1];
 
-    // Remove any remaining trailing (back)slashes.  We do this
-    // because "dir//file" is equivalent to "dir/file", and we
-    // want to return "dir" in both cases.
-    return chompDirSeparators(path[0 .. i]);
+    // Remove any remaining trailing (back)slashes.
+    return chompDirSeparators(p[0 .. i]);
 }
 
 
@@ -264,19 +261,30 @@ unittest
     assert (dirname("")                 == ".");
     assert (dirname("file")             == ".");
     assert (dirname("dir/")             == ".");
+    assert (dirname("dir///")           == ".");
     assert (dirname("dir/file")         == "dir");
     assert (dirname("dir///file")       == "dir");
-    assert (dirname("/file")            == "/");
     assert (dirname("dir/subdir/")      == "dir");
+    assert (dirname("/dir/file")        == "/dir");
+    assert (dirname("/file")            == "/");
+    assert (dirname("/")                == "/");
+    assert (dirname("///")              == "/");
 
     version (Windows)
     {
     assert (dirname("dir\\")            == ".");
+    assert (dirname("dir\\\\\\")        == ".");
     assert (dirname("dir\\file")        == "dir");
     assert (dirname("dir\\\\\\file")    == "dir");
-    assert (dirname("d:file")           == "d:");
-    assert (dirname("d:\\file")         == "d:\\");
     assert (dirname("dir\\subdir\\")    == "dir");
+    assert (dirname("\\dir\\file")      == "\\dir");
+    assert (dirname("\\file")           == "\\");
+    assert (dirname("\\")               == "\\");
+    assert (dirname("\\\\\\")           == "\\");
+    assert (dirname("d:file")           == "d:");
+    assert (dirname("d:")               == "d:");
+    assert (dirname("d:\\file")         == "d:\\");
+    assert (dirname("d:\\")             == "d:\\");
     }
 }
 
