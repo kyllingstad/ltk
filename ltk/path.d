@@ -135,22 +135,26 @@ private C[] stripDrive(C)(C[] path)  if (isSomeChar!C)
 /** Returns the name of a file, without any leading directory
     and with an optional suffix chopped off.
 
+    Examples:
     ---
-    basename("file.ext")                -->  "file.ext"
-    basename("file.ext", ".ext")        -->  "file"
     basename("dir/file.ext")            -->  "file.ext"
     basename("dir/file.ext", ".ext")    -->  "file"
+    basename("dir/filename", "name")    -->  "file"
     basename("dir/subdir/")             -->  "subdir"
-    basename("/")                       -->  "/"
 
     // Windows only:
     basename( "d:file.ext")             -->  "file.ext"
-    basename( "d:file.ext", ".ext")     -->  "file"
-    basename(r"dir\file.ext")           -->  "file.ext"
-    basename(r"dir\file.ext", ".ext")   -->  "file"
-    basename(r"dir\subdir\")            -->  "subdir"
-    basename(r"\")                      -->  r"\"
-    basename(r"d:\")                    -->  r"\"
+    basename(r"d:\dir\file.ext")        -->  "file.ext"
+    ---
+
+    Note:
+    This function only strips away the specified suffix.  If you want
+    to remove the extension from a path, regardless of what the extension
+    is, use stripExtension().
+    If you want the filename without leading directories and without
+    an extension, combine the functions like this:
+    ---
+    assert (basename(stripExtension("dir/file.ext")) == "file");
     ---
 */
 // This function is written so it adheres to the POSIX requirements
@@ -210,25 +214,26 @@ unittest
     assert (basename("d:\\")                        == "\\");
     assert (basename("d:")                          == "");
     }
+
+    assert (basename(stripExtension("dir/file.ext")) == "file");
 }
+
 
 
 
 /** Returns the directory part of a path.  On Windows, this
     includes the drive letter if present.
 
+    Examples:
     ---
     dirname("file")             -->  "."
-    dirname("dir/")             -->  "."
     dirname("dir/file")         -->  "dir"
-    dirname("dir///file")       -->  "dir"
     dirname("/file")            -->  "/"
     dirname("dir/subdir/")      -->  "dir"
 
     // Windows only:
     dirname( "d:file")          -->  "d:"
-    dirname(r"dir\")            -->  "."
-    dirname(r"dir\\\file")      -->  "dir"
+    dirname(r"d:\dir\file")     --> r"d:\dir"
     dirname(r"d:\file")         --> r"d:\"
     dirname(r"dir\subdir\")     -->  "dir"
     ---
@@ -285,10 +290,11 @@ unittest
     assert (dirname("\\file")           == "\\");
     assert (dirname("\\")               == "\\");
     assert (dirname("\\\\\\")           == "\\");
-    assert (dirname("d:file")           == "d:");
     assert (dirname("d:")               == "d:");
-    assert (dirname("d:\\file")         == "d:\\");
+    assert (dirname("d:file")           == "d:");
     assert (dirname("d:\\")             == "d:\\");
+    assert (dirname("d:\\file")         == "d:\\");
+    assert (dirname("d:\\dir\\file")    == "d:\\dir");
     }
 }
 
@@ -297,7 +303,10 @@ unittest
 
 /** Returns the drive letter (including the colon) of a path, or
     an empty string if there is no drive letter.
+
     Always returns an empty string on POSIX.
+
+    Examples:
     ---
     drivename( "d:file")    -->  "d:"
     drivename(r"d:\file")   -->  "d:"
@@ -398,7 +407,7 @@ unittest
 
 
 
-/** Return the file name without the extension.
+/** Return the path with the extension stripped off.
 
     Examples:
     ---
@@ -407,6 +416,7 @@ unittest
     extension("file.ext1.ext2")     -->  "file.ext1"
     extension(".file")              -->  ".file"
     extension(".file.ext")          -->  ".file"
+    extension("dir/file.ext")       -->  "dir/file"
     ---
 */
 C[] stripExtension(C)(C[] path)  if (isSomeChar!C)
@@ -595,10 +605,11 @@ unittest
 
 /** Determines whether a path is absolute or relative.
 
-    isRelative() is just defined as !isAbsolute(), with the
+    isRelative() is just defined as !_isAbsolute(), with the
     notable exception that both functions return false if
     path is an empty string.
 
+    Examples:
     On POSIX, an absolute path starts at the root directory,
     i.e. it starts with a slash (/).
     ---
@@ -685,10 +696,11 @@ string toAbsolute(string path)
 
 
 
-/+
-/** Convert a relative path to a canonical path.  In addition to
-    performing the same operations as toAbsolute(), this function
-    does the following:
+
+/** Convert a relative path to a canonical path.
+
+    In addition to performing the same operations as toAbsolute(),
+    this function does the following:
 
     On POSIX,
     $(UL
@@ -706,24 +718,15 @@ string toAbsolute(string path)
 */
 string toCanonical(string path)
 {
-    version(Windows) string altDirSeparator = "\\";
-
-    if (path == null) return null;
+    if (path.length == 0) return null;
 
     // Get absolute path, and duplicate it to make sure we can
-    // safely cast it to mutable below.
-    auto immutablePath = toAbsolute(path).idup;
+    // safely change it below.
+    auto p1 = toAbsolute(path).dup;
 
     // On Windows, skip drive designation.
-    version (Windows)
-        auto absolute = cast(char[]) immutablePath[2 .. $];
-    version (Posix)
-        auto absolute = cast(char[]) immutablePath;
-
-    // When constructing the canonical path, we will overwrite
-    // absolute.  This alias is to make the following code easier
-    // to read.
-    alias absolute canonical;
+    version (Windows)  auto p2 = p1[2 .. $];
+    else auto p2 = p1;
 
     enum { singleDot, doubleDot, dirSep, other }
     int prev = other;
@@ -731,35 +734,27 @@ string toCanonical(string path)
     // i is the position in the absolute path,
     // j is the position in the canonical path.
     int j = 0;
-    for (int i=0; i<=absolute.length; i++, j++)
+    for (int i=0; i<=p2.length; ++i, ++j)
     {
-        // On Windows, replace slashes with backslashes.
-        version (Windows)
-        {
-            if (i < absolute.length && absolute[i] == altDirSeparator[0])
-                absolute[i] = dirSeparator[0];
-        }
-
-        // At directory separator or end of path.
-        if (i == absolute.length || absolute[i] == dirSeparator[0])
+        // At directory separator or end of path?
+        if (i == p2.length || isDirSeparator(p2[i]))
         {
             if (prev == singleDot || prev == doubleDot)
             {
                 // Backtrack to last dir separator
-                while (canonical[--j] != dirSeparator[0])  { }
+                while (!isDirSeparator(p2[--j])) { }
             }
             if (prev == doubleDot && j>0)
             {
-                enforce(j > 0, "Invalid path (too many ..)");
                 // Backtrack once again
-                while (canonical[--j] != dirSeparator[0])  { }
+                while (!isDirSeparator(p2[--j])) { }
             }
             if (prev == dirSep)  --j;
             prev = dirSep;
         }
 
-        // At period
-        else if (absolute[i] == '.')
+        // At dot?
+        else if (p2[i] == '.')
         {
             if (prev == dirSep)         prev = singleDot;
             else if (prev == singleDot) prev = doubleDot;
@@ -769,18 +764,22 @@ string toCanonical(string path)
         // At anything else
         else prev = other;
 
-        if (i < absolute.length) canonical[j] = absolute[i];
+        if (i < p2.length) p2[j] = p2[i];
     }
 
-    // If the directory turns out to be root, we do want a
-    // trailing slash.
+    // If the directory turns out to be root, we do want a trailing slash.
     if (j == 1)  j = 2;
 
-    // On Windows, include drive designation again.
-    version (Windows)  j++;
-    version (Posix)    j--;
-
-    return immutablePath[0 .. j];
+    // On Windows, make a final pass through the path and replace slashes 
+    // with backslashes and include drive designation again.
+    // Note that we can safely cast the result to string, since we dup-ed
+    // the string we got from toAbsolute() earlier.
+    version (Windows)
+    {
+        foreach (ref c; p2) if (c == '/') c = '\\';
+        return cast(string) p1[0 .. j+1];
+    }
+    else version (Posix) return cast(string) p2[0 .. j-1];
 }
 
 
@@ -796,89 +795,6 @@ unittest
     {
         string p1 = "foo\\bar\\baz";
         string p2 = "foo\\boo\\../bar\\..\\../foo\\/\\bar\\baz/";
-        writeln(toCanonical(p2), "  ", toAbsolute(p1));
         assert (toCanonical(p2) == toAbsolute(p1));
     }
 }
-
-
-
-
-/*  Return the position of the last dir separator in path,
-    -1 if none found.  On Windows, this includes the colon
-    after the drive letter.
-*/
-private int lastSlashPos(in char[] path)
-{
-    int i = path.length - 1;
-    for (; i >= 0; i--)
-    {
-        version (Posix)
-            if (path[i] == '/')  break;
-
-        version (Windows)
-            if (path[i] == '\\' || path[i] == ':' || path[i] == '/')  break;
-    }
-    return i;
-}
-
-
-
-
-/*  Strip trailing (back)slashes from path. */
-private inout(char[]) chompSlashes(inout char[] path)
-{
-    int i = path.length - 1;
-    version (Posix)   while (path[i] == '/')  i--;
-    version (Windows) while (path[i] == '\\' || path[i] =='/')  i--;
-    return path[0 .. i+1];
-}
-
-
-unittest
-{
-    assert (chompSlashes("foo") == "foo");
-    assert (chompSlashes("foo/") == "foo");
-    assert (chompSlashes("foo///") == "foo");
-
-    version (Windows)
-    {
-    assert (chompSlashes("foo\\") == "foo");
-    assert (chompSlashes("foo\\\\\\") == "foo");
-    }
-}
-
-
-
-
-// Return the position of the filename/extension separator dot
-// in path.  If not found, return -1.
-// This could be included in extension() but for now we keep it
-// as a separate function in case we want more support for extensions
-// later (such as removeExtension(), replaceExtension(), etc.).
-private int extSepPos(in char[] path)
-{
-    int i = path.length - 1;
-
-    version(Windows)
-    {
-        while (i >= 0 && path[i] != dirSeparator[0] && path[i] != ':')
-        {
-            if (path[i] == '.')  return i;
-            i--;
-        }
-    }
-
-    else version(Posix)
-    {
-        while (i >= 0 && path[i] != dirSeparator[0])
-        {
-            if (path[i] == '.' && i != 0 && path[i-1] != dirSeparator[0])
-                return i;
-            i--;
-        }
-    }
-
-    return -1;
-}
-+/
