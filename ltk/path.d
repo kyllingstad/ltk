@@ -14,13 +14,9 @@
 module ltk.path;
 
 
-import std.array;
 import std.conv;
 import std.ctype;
-import std.exception;
 import std.file;
-import std.path;
-import std.range;
 import std.string;
 import std.traits;
 
@@ -556,9 +552,29 @@ version (unittest)
 }
 
 
-/** Joins two or more path components. */
+
+
+/** Joins two or more path components.
+
+    The given path components are concatenated with each other,
+    and if necessary, directory separators are inserted between
+    them. If any of the path components are absolute paths (see
+    $(LINK2 #isAbsolute,isAbsolute)) the preceding path components
+    will be dropped.
+
+    Examples:
+    ---
+    // On Windows:
+    join(r"c:\foo", "bar")  -->  r"c:\foo\bar"
+    join("foo", r"d:\bar")  -->  r"d:\bar"
+
+    // On POSIX
+    join("/foo/", "bar")    -->  "/foo/bar"
+    join("/foo", "/bar")    -->  "/bar"
+    ---
+*/
 immutable(Unqual!C)[] join(C, Strings...)(in C[] path, in Strings morePaths)
-    if (compatibleStrings!(C[], Strings))
+    if (Strings.length > 0 && compatibleStrings!(C[], Strings))
 {
     // More than two path components
     static if (Strings.length > 1)
@@ -576,9 +592,9 @@ immutable(Unqual!C)[] join(C, Strings...)(in C[] path, in Strings morePaths)
         if (isAbsolute(path2)) return path2.idup;
 
         if (isDirSeparator(path1[$-1]) || isDirSeparator(path2[0]))
-            return cast(string)(path1 ~ path2);
+            return cast(typeof(return))(path1 ~ path2);
         else
-            return cast(string)(path1 ~ dirSeparator ~ path2);
+            return cast(typeof(return))(path1 ~ dirSeparator ~ path2);
     }
 }
 
@@ -588,16 +604,21 @@ unittest
     version (Posix)
     {
         assert (join("foo", "bar") == "foo/bar");
-        assert (join("foo/", "bar") == "foo/bar");
-        assert (join("foo///", "bar") == "foo///bar");
-        assert (join("/foo", "bar") == "/foo/bar");
-        assert (join("foo", "/bar") == "/bar");
-        assert (join("foo", "bar/") == "foo/bar/");
-        assert (join("/", "foo") == "/foo");
-        assert (join("", "foo") == "foo");
-        assert (join("foo", "") == "foo");
-        assert (join("foo", "bar", "baz") == "foo/bar/baz");
-        assert (join("foo", "/bar", "baz") == "/bar/baz");
+        assert (join("foo/".dup, "bar") == "foo/bar");
+        assert (join("foo///", "bar".dup) == "foo///bar");
+        assert (join("/foo"w, "bar"w) == "/foo/bar");
+        assert (join("foo"w.dup, "/bar"w) == "/bar");
+        assert (join("foo"w, "bar/"w.dup) == "foo/bar/");
+        assert (join("/"d, "foo"d) == "/foo");
+        assert (join(""d.dup, "foo"d) == "foo");
+        assert (join("foo"d, ""d.dup) == "foo");
+        assert (join("foo", "bar".dup, "baz") == "foo/bar/baz");
+        assert (join("foo"w, "/bar"w, "baz"w.dup) == "/bar/baz");
+    }
+    version (Windows)
+    {
+        assert (join(r"c:\foo", "bar") == r"c:\foo\bar");
+        assert (join("foo"w, r"d:\bar"w.dup) ==  r"d:\bar");
     }
 }
 
@@ -698,7 +719,7 @@ string toAbsolute(string path)
 
 
 
-/** Convert a relative path to a canonical path.
+/** Convert path to a canonical _path.
 
     In addition to performing the same operations as toAbsolute(),
     this function does the following:
@@ -799,3 +820,14 @@ unittest
         assert (toCanonical(p2) == toAbsolute(p1));
     }
 }
+
+
+
+import std.path;
+/** Functions from the current std.path which I don't plan to change,
+    but which should perhaps get better names?
+*/
+alias std.path.fcmp fcmp;
+alias std.path.fncharmatch fncharmatch; /// ditto
+alias std.path.fnmatch fnmatch;         /// ditto
+alias std.path.expandTilde expandTilde; /// ditto
