@@ -1,6 +1,3 @@
-// This module is currently not in a working state, so don't waste time
-// trying to use it.
-
 /** Proposal for a rewrite of
     $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_path.html,std._path).
 
