@@ -154,46 +154,60 @@ private inout(char[]) stripDrive(inout char[] path)
 */
 inout(char[]) basename(inout char[] path, in char[] suffix=null)
 {
-// Spec: http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
-    path = stripDrive(path);
-    if (path.length == 0) return path;
+    // This function is written so it adheres to the POSIX requirements
+    // for the 'basename' shell utility:
+    // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
 
-    auto p = chompDirSeparators(path);
+    auto p1 = stripDrive(path);
+    if (p1.length == 0) return null;
 
-    // If this is the root directory, we return one of
-    // the (back)slashes we just stripped off.  That is,
-    // after all, its name.
-    if (p.length == 0) return path[0 .. 1];
+    auto p2 = chompDirSeparators(p1);
+    if (p2.length == 0) return p1[0 .. 1];
 
-    auto i = lastSeparator(p);
+    auto p3 = p2[lastSeparator(p2)+1 .. $];
 
     // TODO: Figure out why the casts are needed here.
-    return cast(inout(char[]))
-        std.string.chomp(cast(const(char)[]) p[i+1 .. $], suffix);
+    auto p4 = cast(inout(char[])) std.string.chomp(cast(const(char)[]) p3, suffix);
+    if (p4.length == 0) return p3;
+
+    return p4;
 }
 
 
 unittest
 {
-    assert (basename("file.ext")                == "file.ext");
-    assert (basename("file.ext", ".ext")        == "file");
-    assert (basename("dir/file.ext")            == "file.ext");
-    assert (basename("dir/file.ext", ".ext")    == "file");
-    assert (basename("dir/subdir/")             == "subdir");
-    assert (basename("/")                       == "/");
+    assert (basename("")                            == "");
+    assert (basename("file.ext")                    == "file.ext");
+    assert (basename("file.ext", ".ext")            == "file");
+    assert (basename("file", "file")                == "file");
+    assert (basename("dir/file.ext")                == "file.ext");
+    assert (basename("dir/file.ext", ".ext")        == "file");
+    assert (basename("dir/file", "file")            == "file");
+    assert (basename("dir///subdir////")            == "subdir");
+    assert (basename("dir/subdir.ext/", ".ext")     == "subdir");
+    assert (basename("dir/subdir/", "subdir")       == "subdir");
+    assert (basename("/")                           == "/");
+    assert (basename("//")                          == "/");
+    assert (basename("///")                         == "/");
 
-    version (Windows)
+    version (Win32)
     {
-    assert (basename("dir\\file.ext")           == "file.ext");
-    assert (basename("dir\\file.ext", ".ext")   == "file");
-    assert (basename("d:file.ext") == "file.ext");
-    assert (basename("d:file.ext", ".ext") == "file");
-    assert (basename("dir\\subdir\\") == "subdir");
-    assert (basename("\\") == "\\");
-    assert (basename("d:\\" == "d:\\"));
+    assert (basename("dir\\file.ext")               == "file.ext");
+    assert (basename("dir\\file.ext", ".ext")       == "file");
+    assert (basename("dir\\file", "file")           == "file");
+    assert (basename("d:file.ext")                  == "file.ext");
+    assert (basename("d:file.ext", ".ext")          == "file");
+    assert (basename("d:file", "file")              == "file");
+    assert (basename("dir\\\\subdir\\\\\\")         == "subdir");
+    assert (basename("dir\\subdir.ext\\", ".ext")   == "subdir");
+    assert (basename("dir\\subdir\\", "subdir")     == "subdir");
+    assert (basename("\\")                          == "\\");
+    assert (basename("\\\\")                        == "\\");
+    assert (basename("\\\\\\")                      == "\\");
+    assert (basename("d:\\")                        == "\\");
+    assert (basename("d:")                          == "");
     }
 }
-
 
 
 
@@ -218,7 +232,10 @@ unittest
 */
 String dirname(String)(String path)  if (isSomeString!String)
 {
-// Spec: http://pubs.opengroup.org/onlinepubs/9699919799/utilities/dirname.html
+    // This function is written so it adheres to the POSIX requirements
+    // for the 'dirname' shell utility:
+    // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/dirname.html
+
     if (path.length == 0) return to!String(".");
     auto p = chompDirSeparators(path);
 
@@ -600,6 +617,7 @@ string toAbsolute(string path)
 
 
 
+/+
 /** Convert a relative path to a canonical path.  In addition to
     performing the same operations as toAbsolute(), this function
     does the following:
@@ -710,6 +728,7 @@ unittest
     {
         string p1 = "foo\\bar\\baz";
         string p2 = "foo\\boo\\../bar\\..\\../foo\\/\\bar\\baz/";
+        writeln(toCanonical(p2), "  ", toAbsolute(p1));
         assert (toCanonical(p2) == toAbsolute(p1));
     }
 }
@@ -794,3 +813,4 @@ private int extSepPos(in char[] path)
 
     return -1;
 }
++/
