@@ -20,7 +20,9 @@ import std.array;
 import std.exception;
 import std.format;
 import std.process;
+import std.range;
 import std.stdio;
+import std.string;
 
 
 
@@ -30,8 +32,15 @@ version (TestCGI)
     void main()
     {
         auto cgi = new CGI;
+        cgi.setStatus(404, "Not Found");
+        cgi.addHeaderField("Foo", "fubared");
+        cgi.addHeaderField("Content-Type", "application/pdf");
 
-        writeln("GET variables: ", getData);
+        cgi.writeln("<html><body>");
+        cgi.writefln("<h%s>Hello World</h%1$s>", 1);
+        cgi.writeln("<p>GET variables: ", cgi.getData, "</p>");
+        cgi.write("</body>");
+        cgi.writef("</%s>\n", "html");
     }
 }
 
@@ -46,7 +55,7 @@ class CGI
 private:
 
     // Variables to hold the HTTP response
-    int statusCode; 
+    int statusCode;
     string statusMsg;
     bool statusSet = false;
 
@@ -88,7 +97,7 @@ public:
         string[string] decomposedQueryString;
         foreach (s; splitter(cast(string) queryString, '&'))
         {
-            auto p = s.indexOf("=");
+            auto p = s.countUntil("=");
             if (p == -1)
                 decomposedQueryString[percentDecode(s)] = "";
             else
@@ -96,6 +105,11 @@ public:
                     percentDecode(s[p+1 .. $]);
         }
         getData = cast(immutable) decomposedQueryString;
+    }
+
+    ~this()
+    {
+        flush();
     }
 
 
@@ -117,13 +131,14 @@ public:
     {
         statusCode = code;
         statusMsg = reason;
+        statusSet = true;
     }
 
 
 
 
     /** Add a header field.
-    
+
         Note:
         If no "Content-Type" or "Location" header is added, the following
         is automatically added when flushHeader() is called:
@@ -167,7 +182,7 @@ public:
 
         if (statusSet)
         {
-            stdout.writeln("Status: %d %s", statusCode, statusMsg);
+            stdout.writefln("Status: %d %s", statusCode, statusMsg);
         }
         if (autoContentType)
         {
@@ -196,7 +211,7 @@ public:
         foreach (arg; args)
         {
             static if (isOutputRange!(typeof(outputBuffer), typeof(arg)))
-                put(outputBuffer, arg)
+                put(outputBuffer, arg);
             else
                 formattedWrite(outputBuffer, "%s", arg);
         }
@@ -205,7 +220,7 @@ public:
     /// ditto
     void writeln(T...)(T args)
     {
-        write(args, httpNewline);
+        this.write(args, httpNewline);
     }
 
     /// ditto
@@ -217,7 +232,7 @@ public:
     /// ditto
     void writefln(Char, T...)(in Char[] fmt, T args)
     {
-        .writef(fmt, args);
+        this.writef(fmt, args);
         outputBuffer.put(httpNewline);
     }
 
@@ -235,7 +250,7 @@ public:
         flushHeader();
         stdout.write(outputBuffer.data);
         stdout.flush();
-        outputBuffer.clear();
+        outputBuffer = appender!string();
     }
 
 
