@@ -110,14 +110,14 @@ private C[] chompDirSeparators(C)(C[] path)  if (isSomeChar!C)
 
     Examples:
     ---
-    basename("dir/file.ext")            -->  "file.ext"
-    basename("dir/file.ext", ".ext")    -->  "file"
-    basename("dir/filename", "name")    -->  "file"
-    basename("dir/subdir/")             -->  "subdir"
+    baseName("dir/file.ext")            -->  "file.ext"
+    baseName("dir/file.ext", ".ext")    -->  "file"
+    baseName("dir/filename", "name")    -->  "file"
+    baseName("dir/subdir/")             -->  "subdir"
 
     // Windows only:
-    basename( "d:file.ext")             -->  "file.ext"
-    basename(r"d:\dir\file.ext")        -->  "file.ext"
+    baseName( "d:file.ext")             -->  "file.ext"
+    baseName(r"d:\dir\file.ext")        -->  "file.ext"
     ---
 
     Note:
@@ -127,13 +127,13 @@ private C[] chompDirSeparators(C)(C[] path)  if (isSomeChar!C)
     If you want the filename without leading directories and without
     an extension, combine the functions like this:
     ---
-    assert (basename(stripExtension("dir/file.ext")) == "file");
+    assert (baseName(stripExtension("dir/file.ext")) == "file");
     ---
 */
 // This function is written so it adheres to the POSIX requirements
 // for the 'basename' shell utility:
 // http://pubs.opengroup.org/onlinepubs/9699919799/utilities/basename.html
-C[] basename(C)(C[] path) if (isSomeChar!C)
+C[] baseName(C)(C[] path) if (isSomeChar!C)
 {
     auto p1 = stripDrive(path);
     if (p1.length == 0) return null;
@@ -145,9 +145,9 @@ C[] basename(C)(C[] path) if (isSomeChar!C)
 }
 
 /// ditto
-C[] basename(C, C1)(C[] path, C1[] suffix)  if (isSomeChar!C && isSomeChar!C1)
+C[] baseName(C, C1)(C[] path, C1[] suffix)  if (isSomeChar!C && isSomeChar!C1)
 {
-    auto p1 = basename(path);
+    auto p1 = baseName(path);
     auto p2 = std.string.chomp(p1, suffix);
     if (p2.length == 0) return p1;
     else return p2;
@@ -156,39 +156,39 @@ C[] basename(C, C1)(C[] path, C1[] suffix)  if (isSomeChar!C && isSomeChar!C1)
 
 unittest
 {
-    assert (basename("")                            == "");
-    assert (basename("file.ext"w)                   == "file.ext");
-    assert (basename("file.ext"d, ".ext")           == "file");
-    assert (basename("file", "file"w.dup)           == "file");
-    assert (basename("dir/file.ext"d.dup)           == "file.ext");
-    assert (basename("dir/file.ext", ".ext"d)       == "file");
-    assert (basename("dir/file"w, "file"d)          == "file");
-    assert (basename("dir///subdir////")            == "subdir");
-    assert (basename("dir/subdir.ext/", ".ext")     == "subdir");
-    assert (basename("dir/subdir/".dup, "subdir")   == "subdir");
-    assert (basename("/"w.dup)                      == "/");
-    assert (basename("//"d.dup)                     == "/");
-    assert (basename("///")                         == "/");
+    assert (baseName("")                            == "");
+    assert (baseName("file.ext"w)                   == "file.ext");
+    assert (baseName("file.ext"d, ".ext")           == "file");
+    assert (baseName("file", "file"w.dup)           == "file");
+    assert (baseName("dir/file.ext"d.dup)           == "file.ext");
+    assert (baseName("dir/file.ext", ".ext"d)       == "file");
+    assert (baseName("dir/file"w, "file"d)          == "file");
+    assert (baseName("dir///subdir////")            == "subdir");
+    assert (baseName("dir/subdir.ext/", ".ext")     == "subdir");
+    assert (baseName("dir/subdir/".dup, "subdir")   == "subdir");
+    assert (baseName("/"w.dup)                      == "/");
+    assert (baseName("//"d.dup)                     == "/");
+    assert (baseName("///")                         == "/");
 
     version (Win32)
     {
-    assert (basename("dir\\file.ext")               == "file.ext");
-    assert (basename("dir\\file.ext", ".ext")       == "file");
-    assert (basename("dir\\file", "file")           == "file");
-    assert (basename("d:file.ext")                  == "file.ext");
-    assert (basename("d:file.ext", ".ext")          == "file");
-    assert (basename("d:file", "file")              == "file");
-    assert (basename("dir\\\\subdir\\\\\\")         == "subdir");
-    assert (basename("dir\\subdir.ext\\", ".ext")   == "subdir");
-    assert (basename("dir\\subdir\\", "subdir")     == "subdir");
-    assert (basename("\\")                          == "\\");
-    assert (basename("\\\\")                        == "\\");
-    assert (basename("\\\\\\")                      == "\\");
-    assert (basename("d:\\")                        == "\\");
-    assert (basename("d:")                          == "");
+    assert (baseName("dir\\file.ext")               == "file.ext");
+    assert (baseName("dir\\file.ext", ".ext")       == "file");
+    assert (baseName("dir\\file", "file")           == "file");
+    assert (baseName("d:file.ext")                  == "file.ext");
+    assert (baseName("d:file.ext", ".ext")          == "file");
+    assert (baseName("d:file", "file")              == "file");
+    assert (baseName("dir\\\\subdir\\\\\\")         == "subdir");
+    assert (baseName("dir\\subdir.ext\\", ".ext")   == "subdir");
+    assert (baseName("dir\\subdir\\", "subdir")     == "subdir");
+    assert (baseName("\\")                          == "\\");
+    assert (baseName("\\\\")                        == "\\");
+    assert (baseName("\\\\\\")                      == "\\");
+    assert (baseName("d:\\")                        == "\\");
+    assert (baseName("d:")                          == "");
     }
 
-    assert (basename(stripExtension("dir/file.ext")) == "file");
+    assert (baseName(stripExtension("dir/file.ext")) == "file");
 }
 
 
@@ -199,19 +199,19 @@ unittest
 
     Examples:
     ---
-    directory("file")             -->  "."
-    directory("dir/file")         -->  "dir"
-    directory("/file")            -->  "/"
-    directory("dir/subdir/")      -->  "dir"
+    dirName("file")             -->  "."
+    dirName("dir/file")         -->  "dir"
+    dirName("/file")            -->  "/"
+    dirName("dir/subdir/")      -->  "dir"
 
     // Windows only:
-    directory( "d:file")          -->  "d:"
-    directory(r"d:\dir\file")     --> r"d:\dir"
-    directory(r"d:\file")         --> r"d:\"
-    directory(r"dir\subdir\")     -->  "dir"
+    dirName( "d:file")          -->  "d:"
+    dirName(r"d:\dir\file")     --> r"d:\dir"
+    dirName(r"d:\file")         --> r"d:\"
+    dirName(r"dir\subdir\")     -->  "dir"
     ---
 */
-C[] directory(C)(C[] path)  if (isSomeChar!C)
+C[] dirName(C)(C[] path)  if (isSomeChar!C)
 {
     // This function is written so it adheres to the POSIX requirements
     // for the 'dirname' shell utility:
@@ -240,34 +240,34 @@ C[] directory(C)(C[] path)  if (isSomeChar!C)
 
 unittest
 {
-    assert (directory("")                 == ".");
-    assert (directory("file"w)            == ".");
-    assert (directory("dir/"d)            == ".");
-    assert (directory("dir///")           == ".");
-    assert (directory("dir/file"w.dup)    == "dir");
-    assert (directory("dir///file"d.dup)  == "dir");
-    assert (directory("dir/subdir/")      == "dir");
-    assert (directory("/dir/file"w)       == "/dir");
-    assert (directory("/file"d)           == "/");
-    assert (directory("/")                == "/");
-    assert (directory("///")              == "/");
+    assert (dirName("")                 == ".");
+    assert (dirName("file"w)            == ".");
+    assert (dirName("dir/"d)            == ".");
+    assert (dirName("dir///")           == ".");
+    assert (dirName("dir/file"w.dup)    == "dir");
+    assert (dirName("dir///file"d.dup)  == "dir");
+    assert (dirName("dir/subdir/")      == "dir");
+    assert (dirName("/dir/file"w)       == "/dir");
+    assert (dirName("/file"d)           == "/");
+    assert (dirName("/")                == "/");
+    assert (dirName("///")              == "/");
 
     version (Windows)
     {
-    assert (directory("dir\\")            == ".");
-    assert (directory("dir\\\\\\")        == ".");
-    assert (directory("dir\\file")        == "dir");
-    assert (directory("dir\\\\\\file")    == "dir");
-    assert (directory("dir\\subdir\\")    == "dir");
-    assert (directory("\\dir\\file")      == "\\dir");
-    assert (directory("\\file")           == "\\");
-    assert (directory("\\")               == "\\");
-    assert (directory("\\\\\\")           == "\\");
-    assert (directory("d:")               == "d:");
-    assert (directory("d:file")           == "d:");
-    assert (directory("d:\\")             == "d:\\");
-    assert (directory("d:\\file")         == "d:\\");
-    assert (directory("d:\\dir\\file")    == "d:\\dir");
+    assert (dirName("dir\\")            == ".");
+    assert (dirName("dir\\\\\\")        == ".");
+    assert (dirName("dir\\file")        == "dir");
+    assert (dirName("dir\\\\\\file")    == "dir");
+    assert (dirName("dir\\subdir\\")    == "dir");
+    assert (dirName("\\dir\\file")      == "\\dir");
+    assert (dirName("\\file")           == "\\");
+    assert (dirName("\\")               == "\\");
+    assert (dirName("\\\\\\")           == "\\");
+    assert (dirName("d:")               == "d:");
+    assert (dirName("d:file")           == "d:");
+    assert (dirName("d:\\")             == "d:\\");
+    assert (dirName("d:\\file")         == "d:\\");
+    assert (dirName("d:\\dir\\file")    == "d:\\dir");
     }
 }
 
@@ -281,12 +281,12 @@ unittest
 
     Examples:
     ---
-    drive( "d:file")    -->  "d:"
-    drive(r"d:\file")   -->  "d:"
-    drive(r"dir\file")  -->  ""
+    driveName( "d:file")    -->  "d:"
+    driveName(r"d:\file")   -->  "d:"
+    driveName(r"dir\file")  -->  ""
     ---
 */
-C[] drive(C)(C[] path)  if (isSomeChar!C)
+C[] driveName(C)(C[] path)  if (isSomeChar!C)
 {
     version (Windows)
     {
@@ -299,12 +299,12 @@ C[] drive(C)(C[] path)  if (isSomeChar!C)
 
 unittest
 {
-    version (Posix)  assert (drive("c:/foo") == null);
+    version (Posix)  assert (driveName("c:/foo") == null);
     version (Windows)
     {
-    assert (drive("dir\\file") == null);
-    assert (drive("d:file") == "d:");
-    assert (drive("d:\\file") == "d:");
+    assert (driveName("dir\\file") == null);
+    assert (driveName("d:file") == "d:");
+    assert (driveName("d:\\file") == "d:");
     }
 }
 
@@ -793,7 +793,7 @@ string toCanonical(string path)
     // If the directory turns out to be root, we do want a trailing slash.
     if (j == 1)  j = 2;
 
-    // On Windows, make a final pass through the path and replace slashes 
+    // On Windows, make a final pass through the path and replace slashes
     // with backslashes and include drive designation again.
     // Note that we can safely cast the result to string, since we dup-ed
     // the string we got from toAbsolute() earlier.
@@ -845,11 +845,12 @@ version(Posix) enum string linesep = "\n"; /// ditto
 alias currentDirSymbol curdir; /// ditto
 alias parentDirSymbol pardir; /// ditto
 alias extension getExt; /// ditto
-string getName(string path) { return basename(stripExtension(path)); } /// ditto
-alias basename getBaseName; /// ditto
-alias directory dirname; /// ditto
-alias directory getDirName; /// ditto
-alias drive getDrive; /// ditto
+string getName(string path) { return baseName(stripExtension(path)); } /// ditto
+alias baseName getBaseName; /// ditto
+alias baseName basename; /// ditto
+alias dirName dirname; /// ditto
+alias dirName getDirName; /// ditto
+alias driveName getDrive; /// ditto
 alias defaultExtension defaultExt; /// ditto
 alias setExtension addExt; /// ditto
 alias isAbsolute isabs; /// ditto
