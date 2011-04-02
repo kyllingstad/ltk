@@ -8,6 +8,7 @@ import ltk.filelock;
 import ltk.path;
 import ltk.posix.sys.un;
 import ltk.process;
+import ltk.range;
 import ltk.stdio;
 import ltk.types;
 import ltk.util;
