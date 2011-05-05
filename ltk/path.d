@@ -86,7 +86,7 @@ version(Posix) private alias isDirSeparator isSeparator;
 */
 private int lastSeparator(C)(in C[] path)  if (isSomeChar!C)
 {
-    int i = path.length - 1;
+    int i = to!int(path.length) - 1;
     while (i >= 0 && !isSeparator(path[i])) --i;
     return i;
 }
@@ -97,7 +97,7 @@ private int lastSeparator(C)(in C[] path)  if (isSomeChar!C)
 */
 private C[] chompDirSeparators(C)(C[] path)  if (isSomeChar!C)
 {
-    int i = path.length - 1;
+    int i = to!int(path.length) - 1;
     while (i >= 0 && isDirSeparator(path[i])) --i;
     return path[0 .. i+1];
 }
@@ -341,7 +341,7 @@ unittest
 */
 private int extSeparatorPos(C)(in C[] path) if (isSomeChar!C)
 {
-    int i = path.length - 1;
+    int i = to!int(path.length) - 1;
     while (i >= 0 && !isSeparator(path[i]))
     {
         if (path[i] == '.' && i > 0 && !isSeparator(path[i-1])) return i;

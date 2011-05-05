@@ -38,7 +38,7 @@ import std.string;
 */
 string[string][string] parseIni(string path)
 {
-    void parseException(int n, string e)
+    void parseException(size_t n, string e)
     {
         throw new Exception(format("Error parsing %s, line %s: %s",
             path, n+1, e));
@@ -76,7 +76,7 @@ string[string][string] parseIni(string path)
         }
 
         // Is this a key/value pair?
-        int delimPos = text.indexOf('=');
+        auto delimPos = text.indexOf('=');
         if (delimPos < 1)
         {
             parseException(lineNo, "Not a key=value pair.");
