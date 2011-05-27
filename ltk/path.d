@@ -644,13 +644,15 @@ unittest
 
     On Windows, an absolute path starts at the root directory of
     a specific drive.  Hence, it must start with "d:\" or "d:/",
-    where d is the drive letter.
+    where d is the drive letter.  Alternatively, it may be a
+    network path, i.e. a path starting with a double (back)slash.
     ---
     assert (isRelative(r"\"));
     assert (isRelative(r"\foo"));
     assert (isRelative( "d:foo"));
     assert (isAbsolute(r"d:\"));
     assert (isAbsolute(r"d:\foo"));
+    assert (isAbsolute(r"\\foo\bar"));
     ---
 */
 bool isAbsolute(C)(in C[] path)  if (isSomeChar!C)
@@ -661,8 +663,8 @@ bool isAbsolute(C)(in C[] path)  if (isSomeChar!C)
     }
     else version (Windows)
     {
-        return path.length >= 3 && isDriveSeparator(path[1])
-            && isDirSeparator(path[2]);
+        return (path.length >= 3 && isDriveSeparator(path[1]) && isDirSeparator(path[2]))
+            || (path.length >= 2 && isDirSeparator(path[0]) && isDirSeparator(path[1]));
     }
 }
 
@@ -680,7 +682,7 @@ unittest
     assert (isRelative("foo"));
     assert (isRelative("../foo"w));
 
-    version (Posix) 
+    version (Posix)
     {
     assert (isAbsolute("/"d));
     assert (isAbsolute("/foo".dup));
@@ -694,6 +696,7 @@ unittest
     assert (isRelative("d:foo"));
     assert (isAbsolute("d:\\"w));
     assert (isAbsolute("d:\\foo"d));
+    assert (isAbsolute("\\\\foo\\bar"));
     }
 }
 
