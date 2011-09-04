@@ -46,7 +46,7 @@ string[string][string] parseIni(string path)
 
 
     // Split file into lines.
-    string[] lines = splitlines(readText(path));
+    string[] lines = splitLines(readText(path));
 
     // Provide a default unnamed section.
     string currentSection = "";
