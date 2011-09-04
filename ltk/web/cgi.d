@@ -107,11 +107,6 @@ public:
         getData = cast(immutable) decomposedQueryString;
     }
 
-    ~this()
-    {
-        flush();
-    }
-
 
 
 
