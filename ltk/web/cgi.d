@@ -177,14 +177,16 @@ public:
 
         if (statusSet)
         {
-            stdout.writefln("Status: %d %s", statusCode, statusMsg);
+            stdout.writef("Status: %d %s", statusCode, statusMsg);
+            stdout.write(httpNewline);
         }
         if (autoContentType)
         {
-            stdout.writeln("Content-Type: text/html; charset=utf-8");
+            stdout.write("Content-Type: text/html; charset=utf-8");
+            stdout.write(httpNewline);
         }
         stdout.write(headerBuffer.data);
-        stdout.writeln();
+        stdout.write(httpNewline);
 
         flushedHeader = true;
     }
