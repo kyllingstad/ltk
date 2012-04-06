@@ -41,6 +41,7 @@ version (TestCGI)
         cgi.writeln("<p>GET variables: ", cgi.getData, "</p>");
         cgi.write("</body>");
         cgi.writef("</%s>\n", "html");
+        cgi.flush();
     }
 }
 
