@@ -96,16 +96,19 @@ public:
 
         // Parse query string
         string[string] decomposedQueryString;
-        foreach (s; splitter(cast(string) queryString, '&'))
+        if (!queryString.empty())
         {
-            auto p = s.countUntil("=");
-            if (p == -1)
-                decomposedQueryString[percentDecode(s)] = "";
-            else
-                decomposedQueryString[percentDecode(s[0 .. p])] =
-                    percentDecode(s[p+1 .. $]);
+            foreach (s; splitter(queryString, '&'))
+            {
+                auto p = s.countUntil("=");
+                if (p == -1)
+                    decomposedQueryString[percentDecode(s)] = "";
+                else
+                    decomposedQueryString[percentDecode(s[0 .. p])] =
+                        percentDecode(s[p+1 .. $]);
+            }
         }
-        getData = cast(immutable) decomposedQueryString;
+        httpGet = cast(immutable) decomposedQueryString;
     }
 
 
@@ -258,7 +261,7 @@ public:
     immutable string queryString;
 
     /** Variables passed to the program using the HTTP GET method. */
-    immutable string[string] getData;
+    immutable string[string] httpGet;
 }
 
 
