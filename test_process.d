@@ -29,7 +29,7 @@ void main()
         ++i;
         writeln(i, " OK");
     }
-    
+
     void pok()
     {
         static int i = 0;
@@ -135,7 +135,7 @@ void main()
         int main(string[] args)
         {
             stdout.write("hello world");
-            return args.length;
+            return cast(int) args.length;
         }
     });
     string out7;

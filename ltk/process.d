@@ -333,7 +333,7 @@ version(Posix) private Pid spawnProcessImpl
     Config config)
 {
     // Make sure the file exists and is executable.
-    if (std.string.indexOf(name, std.path.sep) == -1)
+    if (std.string.indexOf(name, std.path.dirSeparator) == -1)
     {
         name = searchPathFor(name);
         enforce(name != null, "Executable file not found: "~name);
@@ -406,7 +406,7 @@ version(Posix) private string searchPathFor(string executable)
 
     foreach (dir; splitter(to!string(pathz), ':'))
     {
-        auto execPath = join(dir, executable);
+        auto execPath = buildPath(dir, executable);
         if (isExecutable(execPath))  return execPath;
     }
 
@@ -419,7 +419,7 @@ version(Posix) private const(char)** toArgz(string prog, const string[] args)
 {
     alias const(char)* stringz_t;
     auto argz = new stringz_t[](args.length+2);
-    
+
     argz[0] = toStringz(prog);
     foreach (i; 0 .. args.length)
     {
