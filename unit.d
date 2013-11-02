@@ -5,7 +5,6 @@ module unit;
 import std.stdio;
 import ltk.array;
 import ltk.filelock;
-import ltk.process;
 import ltk.range;
 import ltk.stdio;
 import ltk.types;
