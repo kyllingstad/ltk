@@ -10,8 +10,5 @@ import ltk.stdio;
 import ltk.types;
 import ltk.util;
 
-import ltk.web.cgi;
-
-
 
 void main() { writeln("All unittests passed."); }
