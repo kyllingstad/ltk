@@ -6,7 +6,6 @@ import std.stdio;
 import ltk.array;
 import ltk.filelock;
 import ltk.range;
-import ltk.stdio;
 import ltk.types;
 import ltk.util;
 
