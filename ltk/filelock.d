@@ -1,8 +1,14 @@
+/*
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+*/
+
 /** POSIX file locking, the easy way.
 
     Authors:    Lars Tandle Kyllingstad
     Copyright:  Copyright (c) 2010, Lars T. Kyllingstad. All rights reserved.
-    License:    Boost License 1.0
+    License:    Mozilla Public License v. 2.0
 */
 module ltk.filelock;
 
