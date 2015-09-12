@@ -1,49 +1,48 @@
-/** Various utilities.
+/**
+Various utilities.
 
-    Authors:    Lars Tandle Kyllingstad
-    Copyright:  Copyright (c) 2010, Lars T. Kyllingstad. All rights reserved.
-    License:    Boost License 1.0
+Authors:    Lars Tandle Kyllingstad
+Copyright:  Copyright (c) 2010–2015, Lars T. Kyllingstad. All rights reserved.
+License:    Boost License 1.0
 */
 module ltk.util;
 
 
-import std.file;
-import std.string;
+/**
+Parses an ini file and return its contents as an associative array.
 
+Example of an ini file:
+---
+; Comment lines in ini files normally start with semicolons.
+# This implementation also supports comments that start with a hash,
+# since its author is a Linux user that thinks hashes look better.
 
+[Section 1]
+key1=This is value one. It is assigned to key1
+anotherKey=This is the second value
 
-/** Parse an ini file and return its contents as an associative array.
+[Yet another section]
+foo=bar
+andSo=on
+---
 
-    Example of an ini file:
-    ---
-    ; Comment lines in ini files normally start with semicolons.
-    # This implementation also supports comments that start with a hash,
-    # since its author is a Linux user that thinks hashes look better.
-
-    [Section 1]
-    key1=This is value one. It is assigned to key1
-    anotherKey=This is the second value
-
-    [Yet another section]
-    foo=bar
-    andSo=on
-    ---
-
-    The values in the above ini file are accessed as follows:
-    ---
-    auto ini = parseIni("myIniFile.ini");
-    auto valueOfAnotherKey = ini["Section 1"]["anotherKey"];
-    assert (valueOfAnotherKey == "This is the second value");
-    ---
+The values in the above ini file are accessed as follows:
+---
+auto ini = parseIni("myIniFile.ini");
+auto valueOfAnotherKey = ini["Section 1"]["anotherKey"];
+assert (valueOfAnotherKey == "This is the second value");
+---
 */
 string[string][string] parseIni(string path)
 {
+    import std.file: readText;
+    import std.string: format, indexOf, splitLines, strip;
+
     void parseException(size_t n, string e)
     {
         throw new Exception(format("Error parsing %s, line %s: %s",
             path, n+1, e));
     }
-
 
     // Split file into lines.
     string[] lines = splitLines(readText(path));
