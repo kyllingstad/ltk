@@ -1,4 +1,4 @@
-#!/usr/local/bin/rdmd --shebang -m64 -unittest --force
+#!rdmd --shebang -m64 -unittest --force
 module unit;
 
 

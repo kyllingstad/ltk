@@ -1,54 +1,44 @@
-/** Useful types. */
+/**
+General-purpose types and type constructors.
+
+Authors:    Lars Tandle Kyllingstad
+Copyright:  Copyright (c) 2010–2015, Lars T. Kyllingstad. All rights reserved.
+License:    Boost License 1.0
+*/
 module ltk.types;
 
 
-import std.conv;
+/**
+A template for typesafe "semi-anonymous" enums.
 
+This mixin defines an enumerated type which is a cross
+between a named and an anonymous enum:  It has a unique name,
+hence it is type safe, but one doesn't have to specify the
+name when using its members.
 
+Syntax:
+---
+// For an automatically enumerated integer type:
+mixin Enum!("type_name", "member1", "member2", ...);
 
-/** This mixin defines an enumerated type which is a cross
-    between a named and an anonymous enum:  It has a unique name,
-    hence it is type safe, but one doesn't have to specify the
-    name when using its members.
+// For an integer type with specific member values:
+mixin Enum!("type_name", "member1", 123, "member2", 456, ...);
 
-    Example:
-    ---
-    mixin Enum!("MyEnum", int,
-        "foo", 1,
-        "bar", 2,
-        "baz", 4);
-
-    void myFunc(MyEnum m) { ... }
-
-    void main()
-    {
-        myFunc(foo);
-        myFunc(bar | baz);
-    }
-    ---
-
-    Syntax:
-    ---
-    // For an automatically enumerated integer type:
-    mixin Enum!("type_name", "member1", "member2", ...);
-
-    // For an integer type with specific member values:
-    mixin Enum!("type_name", "member1", 123, "member2", 456, ...);
-
-    // For a non-integer type:
-    mixin Enum!("type_name", base_type, "member1", value1, "member2", value2, ...);
-    ---
+// For a non-integer type:
+mixin Enum!("type_name", base_type, "member1", value1, "member2", value2, ...);
+---
 */
 mixin template Enum(string name, membersAndValues...) if (!is(membersAndValues[0]))
 {
     mixin Enum!(name, int, membersAndValues);
 }
 
+/// ditto
 mixin template Enum(string name, BaseType, membersAndValues...)
 {
     static assert (membersAndValues.length >= 2,
         "Must specify at least one enum member as well as its value.");
-    
+
     enum structDef = "
         struct "~name~"
         {
@@ -82,10 +72,27 @@ mixin template Enum(string name, BaseType, membersAndValues...)
     mixin(enumDef);
 }
 
-string enumImpl(T, U...)(string name, U mv)
+///
+unittest
+{
+    mixin Enum!("MyEnum", int,
+        "foo", 1,
+        "bar", 2,
+        "baz", 4);
+
+    void myFunc(MyEnum m) { /* ... */ }
+
+    void main()
+    {
+        myFunc(foo);
+        myFunc(bar | baz);
+    }
+}
+
+private string enumImpl(T, U...)(string name, U mv)
 {
     string code = "enum : "~name~"\n{\n";
-    
+
     foreach (i, m; mv)
     {
         static if (i % 2 == 0)
@@ -96,6 +103,7 @@ string enumImpl(T, U...)(string name, U mv)
         }
         else
         {
+            import std.conv: to;
             static assert (is (U[i] == T),
                 "Expected member value of type "~T.stringof~", not "~U[i].stringof);
             code ~= name ~"("~to!string(m)~"),\n";
@@ -104,7 +112,6 @@ string enumImpl(T, U...)(string name, U mv)
 
     return code~"}";
 }
-
 
 unittest
 {
@@ -117,7 +124,6 @@ unittest
     assert ((one & two) == zero);
     assert ((one | two) == three);
 }
-
 
 unittest
 {
