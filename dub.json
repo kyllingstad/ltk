@@ -1,0 +1,9 @@
+{
+    "name"          : "ltk",
+    "description"   : "A bit of this, and a bit of that",
+    "homepage"      : "https://github.com/kyllingstad/ltk",
+    "copyright"     : "Copyright (c) 2010–2015, Lars T. Kyllingstad",
+    "license"       : "MPL-2.0",
+    "authors"       : [ "Lars T. Kyllingstad" ],
+    "targetType"    : "library"
+}
