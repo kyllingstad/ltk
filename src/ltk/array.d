@@ -5,8 +5,7 @@ file, You can obtain one at http://mozilla.org/MPL/2.0/.
 */
 
 /**
-Array-related stuff. These functions are implemented in a quite
-naïve way, so there is most likely ample room for optimisations.
+Array-related stuff.
 
 Authors:    Lars Tandle Kyllingstad
 Copyright:  Copyright (c) 2010–2015, Lars T. Kyllingstad. All rights reserved.
@@ -17,10 +16,13 @@ module ltk.array;
 
 
 /**
-Combines several associative arrays.
+Combines several associative arrays by copying their elements into a new one.
 
 The arrays are processed in the order they are given, and if a key exists in
 two or more arrays, the first one takes precedence.
+
+This function is implemented in the naïve way, by looping over each element
+of each array. It is therefore O(n) in the total number of elements.
 */
 T[U] combine(T, U)(T[U][] arrays ...)
 {
