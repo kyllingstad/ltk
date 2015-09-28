@@ -5,5 +5,17 @@
     "copyright"     : "Copyright (c) 2010–2015, Lars T. Kyllingstad",
     "license"       : "MPL-2.0",
     "authors"       : [ "Lars T. Kyllingstad" ],
-    "targetType"    : "library"
+    "targetType"    : "library",
+
+    "buildTypes": {
+        "DSddox": {
+            "buildOptions": ["syntaxOnly"],
+            "dflags": ["-c", "-Df__dummy.html", "-Xfdocs.json"],
+            "postBuildCommands": [
+                "rm -rf doc",
+                "dub run ddox -- filter --min-protection=Protected docs.json",
+                "dub run ddox -- generate-html --navigation-type=ModuleTree docs.json doc"
+            ]
+        }
+    }
 }
