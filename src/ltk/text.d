@@ -24,10 +24,10 @@ By "same characteristics" we here mean that it must be a random access range
 which has a known length and which supports slicing, and whose elements are of
 one of the three character types.
 */
-template isStringLike(Range)
+template isStringlike(Range)
 {
     import std.traits, std.range.primitives;
-    enum isStringLike = isSomeString!Range
+    enum isStringlike = isSomeString!Range
         || (isRandomAccessRange!Range && hasLength!Range && hasSlicing!Range
             && isSomeChar!(ElementType!Range));
 }
@@ -52,7 +52,7 @@ Both LF and CR are counted as newline characters, except when an LF immediately
 follows a CR (Windows _line endings), in which case they are considered together
 as one newline.
 */
-struct TextLocationTracker(String) if (isStringLike!String)
+struct TextLocationTracker(String) if (isStringlike!String)
 {
     import std.range.primitives;
 
@@ -132,13 +132,19 @@ struct TextLocationTracker(String) if (isStringLike!String)
     }
 
     /**
-    Returns a slice of the _front n elements.
+    Returns a slice of the _front n elements of the underlying range.
 
     n must be smaller than or equal to length.
     */
     typeof(this) frontSlice(size_t n)
     {
         return typeof(this)(inner_[0 .. n], line_, column_);
+    }
+
+    /// Returns the underlying range.
+    @property String inner()
+    {
+        return inner_;
     }
 
     /// Returns the _line number of the _front element.
@@ -161,7 +167,7 @@ private:
 
 /// Convenience function for creating a TextLocationTracker.
 TextLocationTracker!String textLocationTracker(String)(auto ref String s)
-    if (isStringLike!String)
+    if (isStringlike!String)
 {
     return typeof(return)(s);
 }
