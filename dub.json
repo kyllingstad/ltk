@@ -14,7 +14,8 @@
             "postBuildCommands": [
                 "rm -rf doc",
                 "dub run ddox -- filter --min-protection=Protected docs.json",
-                "dub run ddox -- generate-html --navigation-type=ModuleTree docs.json doc"
+                "dub run ddox -- generate-html --navigation-type=ModuleTree docs.json doc",
+                "rm __dummy.html docs.json"
             ]
         }
     }
