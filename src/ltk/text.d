@@ -13,136 +13,154 @@ License:    Mozilla Public License v. 2.0
 */
 module ltk.text;
 
-import std.array; // for the range primitives
+// For the range primitives:
+import std.array;
+import std.range.primitives;
+import std.traits;
 
 
 /**
-Evaluates to true if Range is a built-in string type or some type which has the
-same characteristics.
+Returns a slice of the front n elements of the string s.
 
-By "same characteristics" we here mean that it must be a random access range
-which has a known length and which supports slicing, and whose elements are of
-one of the three character types.
+This function is mainly intended for use in ranges that wrap strings, or
+which wrap other wrapper ranges.  If all such ranges support this primitive,
+and implement it as returning the innerFrontSlice of their underlying
+range, it becomes possible to acquire a slice of an underlying string through
+several layers of such wrappers.
 */
-template isStringlike(Range)
+inout(C)[] innerFrontSlice(C)(inout(C)[] s, size_t n)
+    @safe pure nothrow @nogc
+    if (isSomeChar!C)
 {
-    import std.traits, std.range.primitives;
-    enum isStringlike = isSomeString!Range
-        || (isRandomAccessRange!Range && hasLength!Range && hasSlicing!Range
-            && isSomeChar!(ElementType!Range));
+    return s[0 .. n];
+}
+
+unittest
+{
+    assert ("".innerFrontSlice(0) == "");
+    assert ("hello".innerFrontSlice(4) == "hell");
 }
 
 
 /**
-A range which wraps a string (or string-like range) and keeps track of _line and
-_column numbers.
+A range which wraps a character range and keeps track of _line and_column
+numbers.
 
-This range is a random-access range view of the underlying string, but it does
-not support general slicing via the slicing operator.  Since TextLocationTracker
-has to look at each character to determine when a new _line begins, slicing
-would be very inefficient.  However, it does support slicing from the _front via
-the frontSlice method.
+The range has the same characteristics as the wrapped range; that is, it may
+have input, forward, bidirectional and random access range primitives,
+depending on whether the underlying range supports them.
 
-It should also be noted that the element type of this range is the element
-encoding type of the underlying string.  That is, even though Phobos performs
-auto-decoding of narrow strings in range operations, this does not happen here.
-If desirable, this may be added in the future as a compile-time option, though.
+It does not support general slicing via the slicing operator, however, as that
+would be impossible to implement efficiently while keeping track of line and
+column numbers.  However, it does support slicing from the _front via the
+frontSlice method, as well as returning a slice of the front of the underlying
+range with innerFrontSlice.
 
 Both LF and CR are counted as newline characters, except when an LF immediately
-follows a CR (Windows _line endings), in which case they are considered together
-as one newline.
+follows a CR (Windows _line endings), in which case only the LF will be counted.
 */
-struct TextLocationTracker(String) if (isStringlike!String)
+struct TextLocationTracker(Range)
+    if (isInputRange!Range && isSomeChar!(ElementType!Range))
 {
     import std.range.primitives;
 
-    static assert (
-        isRandomAccessRange!(typeof(this))
-        && hasLength!(typeof(this))
-        && is(ElementType!(typeof(this)) == ElementEncodingType!String));
+    static assert (isInputRange!(typeof(this)));
+    static assert (is(ElementType!(typeof(this)) == ElementType!Range));
 
     /**
     Wraps the given string, starting counting at the given _line and _column
     numbers.
     */
-    this(String s, int startLine = 1, int startColumn = 1)
+    this(Range s, int startLine = 1, int startColumn = 1, int startCUColumn = 1)
     {
         inner_ = s;
         line_ = startLine;
         column_ = startColumn;
+        cuColumn_ = startCUColumn;
     }
 
-    /// Input range primitive.
+    // Input range primitives
     @property bool empty() const
     {
         return inner_.empty;
     }
 
-    /// Input range primitive.
     @property auto ref front()
     {
         assert (!empty);
-        return inner_[0];
+        return inner_.front;
     }
 
-    /// Input range primitive.
     void popFront()
     {
         assert (!empty);
+        const lengthBefore = inner_.length;
         const c = front;
-        inner_ = inner_[1 .. $];
-        if (c == '\n' || (c == '\r' && !(!inner_.empty && inner_[0] == '\n'))) {
+        inner_.popFront();
+        if (c == '\n' || (c == '\r' && !(!inner_.empty && inner_.front == '\n'))) {
             ++line_;
             column_ = 1;
+            cuColumn_ = 1;
         } else {
             ++column_;
+            cuColumn_ += lengthBefore - inner_.length;
         }
     }
 
-    /// Forward range primitive.
-    typeof(this) save()
-    {
-        return typeof(this)(inner_.save, line_, column_);
+    // Forward range primitives
+    static if (isForwardRange!Range) {
+        typeof(this) save()
+        {
+            return typeof(this)(inner_.save, line_, column_, cuColumn_);
+        }
     }
 
-    /// Bidirectional range primitive.
-    @property auto ref back()
-    {
-        assert (!empty);
-        return inner_[$-1];
+    // Bidirectional range primitive.
+    static if (isBidirectionalRange!Range) {
+        @property auto ref back()
+        {
+            assert (!empty);
+            return inner_.back;
+        }
+
+        void popBack()
+        {
+            assert (!empty);
+            inner_.popBack();
+        }
     }
 
-    /// Bidirectional range primitive.
-    void popBack()
-    {
-        assert (!empty);
-        inner_ = inner_[0 .. $-1];
+    // Indexing
+    static if (__traits(compiles, { auto c = Range.init[0]; })) {
+        auto ref opIndex(size_t index)
+        {
+            return inner_[index];
+        }
     }
 
-    /// Random access range primitive.
-    auto ref opIndex(size_t index)
-    {
-        return inner_[index];
+    // Length
+    static if (__traits(compiles, { auto n = Range.init.length; })) {
+        @property auto ref length()
+        {
+            return inner_.length;
+        }
     }
 
-    /// Returns the _length of the string (in code units).
-    @property auto ref length()
-    {
-        return inner_.length;
-    }
+    // Slicing (kind of)
+    static if (__traits(compiles, { auto s = Range.init[0 .. 1]; })) {
+        typeof(this) frontSlice(size_t n)
+        {
+            return typeof(this)(inner_[0 .. n], line_, column_);
+        }
 
-    /**
-    Returns a slice of the _front n elements of the underlying range.
-
-    n must be smaller than or equal to length.
-    */
-    typeof(this) frontSlice(size_t n)
-    {
-        return typeof(this)(inner_[0 .. n], line_, column_);
+        auto innerFrontSlice(size_t n)
+        {
+            return inner_.innerFrontSlice(n);
+        }
     }
 
     /// Returns the underlying range.
-    @property String inner()
+    @property Range inner()
     {
         return inner_;
     }
@@ -159,15 +177,22 @@ struct TextLocationTracker(String) if (isStringlike!String)
         return column_;
     }
 
+    /// Returns the _column number of the _front element, counted in code units.
+    @property int codeUnitColumn() const @safe pure nothrow @nogc
+    {
+        return cuColumn_;
+    }
+
 private:
-    String inner_;
+    Range inner_;
     int line_;
     int column_;
+    int cuColumn_;
 }
 
 /// Convenience function for creating a TextLocationTracker.
-TextLocationTracker!String textLocationTracker(String)(auto ref String s)
-    if (isStringlike!String)
+TextLocationTracker!Range textLocationTracker(Range)(auto ref Range s)
+    if (isInputRange!Range && isSomeChar!(ElementType!Range))
 {
     return typeof(return)(s);
 }
